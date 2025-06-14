@@ -56,13 +56,17 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
 
   const handleDownload = async (artwork: FirebasePixelArt) => {
     try {
-      // Download the image
+      // 画像をfetchしてBlobとしてダウンロード
+      const response = await fetch(artwork.imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = artwork.imageUrl;
+      link.href = url;
       link.download = `${artwork.title.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       // Increment download count
       if (artwork.id) {
