@@ -6,13 +6,15 @@ import {
   User as FirebaseUser 
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, googleProvider, db, storage } from '../config/firebase';
 import { User, AuthState } from '../types';
 
 interface AuthContextType extends AuthState {
   loginWithGoogle: () => Promise<boolean>;
   logout: () => Promise<void>;
   updateNickname: (nickname: string) => Promise<void>;
+  updateAvatar: (file: File) => Promise<string | undefined>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -118,11 +120,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } : prev);
   };
 
+  const updateAvatar = async (file: File): Promise<string | undefined> => {
+    if (!authState.user) return;
+    const storageRef = ref(storage, `avatars/${authState.user.id}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    const userRef = doc(db, 'users', authState.user.id);
+    await updateDoc(userRef, { avatar: url });
+    setAuthState((prev) => prev.user ? {
+      ...prev,
+      user: { ...prev.user, avatar: url },
+    } : prev);
+    return url;
+  };
+
   const contextValue: AuthContextType = {
     ...authState,
     loginWithGoogle,
     logout,
     updateNickname,
+    updateAvatar,
   };
 
   return (

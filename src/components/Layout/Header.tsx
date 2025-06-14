@@ -75,11 +75,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                     {user.avatar ? (
                       <img
                         src={user.avatar}
-                        alt={user.username}
+                        alt={user.nickname || 'ゲストさん'}
                         className="w-full h-full rounded-full object-cover"
                       />
                     ) : (
-                      <User className="h-4 w-4 text-white" />
+                      <svg className="w-5 h-5 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16a4 4 0 100-8 4 4 0 000 8z" />
+                      </svg>
                     )}
                   </div>
                   <span className="text-sm font-medium text-gray-700">{user.nickname || 'ゲストさん'}</span>
@@ -161,11 +164,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                       {user.avatar ? (
                         <img
                           src={user.avatar}
-                          alt={user.username}
+                          alt={user.nickname || 'ゲストさん'}
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (
-                        <User className="h-4 w-4 text-white" />
+                        <svg className="w-5 h-5 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16a4 4 0 100-8 4 4 0 000 8z" />
+                        </svg>
                       )}
                     </div>
                     <span>{user.nickname || 'ゲストさん'}</span>
