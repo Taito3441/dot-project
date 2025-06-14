@@ -35,7 +35,7 @@ export const canvasToImageData = (
     for (let x = 0; x < width; x++) {
       const colorIndex = canvas[y][x];
       if (colorIndex > 0) {
-        ctx.fillStyle = palette[colorIndex];
+        ctx.fillStyle = palette[colorIndex - 1];
         ctx.fillRect(x * scale, y * scale, scale, scale);
       }
     }
