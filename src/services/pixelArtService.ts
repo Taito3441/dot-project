@@ -157,11 +157,51 @@ export class PixelArtService {
   }
 
   // ヘルパー：一次元配列 → 二次元配列へ復元
-  private static reshapeCanvas(flat: number[], width: number, height: number): number[][] {
+  private static reshapeCanvas(flat: any, width: number, height: number): number[][] {
+    if (!flat || (Array.isArray(flat) && flat.length === 0)) return [];
+    if (Array.isArray(flat) && Array.isArray(flat[0])) {
+      // すでに二次元配列
+      return flat as number[][];
+    }
     const reshaped: number[][] = [];
     for (let i = 0; i < height; i++) {
-      reshaped.push(flat.slice(i * width, (i + 1) * width));
+      reshaped.push((flat as number[]).slice(i * width, (i + 1) * width));
     }
     return reshaped;
+  }
+
+  // 統計情報を取得
+  static async getStats(): Promise<{
+    artworkCount: number;
+    artistCount: number;
+    totalDownloads: number;
+    totalLikes: number;
+  }> {
+    try {
+      const q = query(
+        collection(db, this.COLLECTION_NAME),
+        where('isPublic', '==', true)
+      );
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map(doc => doc.data());
+      const artworkCount = docs.length;
+      const artistSet = new Set<string>();
+      let totalDownloads = 0;
+      let totalLikes = 0;
+      for (const doc of docs) {
+        artistSet.add(doc.authorId);
+        totalDownloads += doc.downloads || 0;
+        totalLikes += doc.likes || 0;
+      }
+      return {
+        artworkCount,
+        artistCount: artistSet.size,
+        totalDownloads,
+        totalLikes,
+      };
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      throw error;
+    }
   }
 }

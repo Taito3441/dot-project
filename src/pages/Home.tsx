@@ -1,6 +1,7 @@
 import React from 'react';
 import { Palette, Users, Download, Heart, ArrowRight, Sparkles, Chrome } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { PixelArtService } from '../services/pixelArtService';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -8,6 +9,20 @@ interface HomeProps {
 
 export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
   const { isAuthenticated } = useAuth();
+
+  const [stats, setStats] = React.useState({
+    artworkCount: 0,
+    artistCount: 0,
+    totalDownloads: 0,
+    totalLikes: 0,
+    loading: true,
+  });
+
+  React.useEffect(() => {
+    PixelArtService.getStats()
+      .then((data) => setStats({ ...data, loading: false }))
+      .catch(() => setStats((prev) => ({ ...prev, loading: false })));
+  }, []);
 
   const features = [
     {
@@ -30,13 +45,6 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
       title: 'ソーシャル機能',
       description: 'いいね、お気に入り、フォロー機能でお気に入りのアーティストとつながろう。',
     },
-  ];
-
-  const stats = [
-    { number: '10K+', label: '作品数' },
-    { number: '5K+', label: 'アーティスト' },
-    { number: '50K+', label: 'ダウンロード' },
-    { number: '100K+', label: 'いいね' },
   ];
 
   return (
@@ -98,16 +106,30 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
       <div className="bg-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-            {stats.map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-                  {stat.number}
-                </div>
-                <div className="text-gray-600 font-medium">
-                  {stat.label}
-                </div>
+            <div className="text-center">
+              <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {stats.loading ? '...' : stats.artworkCount.toLocaleString()}
               </div>
-            ))}
+              <div className="text-gray-600 font-medium">作品数</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {stats.loading ? '...' : stats.artistCount.toLocaleString()}
+              </div>
+              <div className="text-gray-600 font-medium">アーティスト</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {stats.loading ? '...' : stats.totalDownloads.toLocaleString()}
+              </div>
+              <div className="text-gray-600 font-medium">ダウンロード</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                {stats.loading ? '...' : stats.totalLikes.toLocaleString()}
+              </div>
+              <div className="text-gray-600 font-medium">いいね</div>
+            </div>
           </div>
         </div>
       </div>
