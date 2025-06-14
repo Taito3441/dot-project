@@ -71,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                   onClick={() => onPageChange('mypage')}
                   className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-200"
                 >
-                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                  <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center overflow-hidden">
                     {user.avatar && !user.avatar.includes('googleusercontent.com') ? (
                       <img
                         src={user.avatar}
@@ -157,7 +157,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                     }}
                     className="flex items-center space-x-3 w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-200"
                   >
-                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                    <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center overflow-hidden">
                       {user.avatar && !user.avatar.includes('googleusercontent.com') ? (
                         <img
                           src={user.avatar}
