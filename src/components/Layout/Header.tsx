@@ -85,6 +85,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                   <span className="text-sm font-medium text-gray-700">{user.username}</span>
                 </button>
                 <button
+                  onClick={() => onPageChange('profile')}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-indigo-600 border border-indigo-100 hover:bg-indigo-50 transition-colors duration-200"
+                >
+                  プロフィール
+                </button>
+                <button
                   onClick={handleLogout}
                   className="p-2 text-gray-400 hover:text-red-500 transition-colors duration-200"
                   title="ログアウト"
@@ -163,6 +169,15 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                       )}
                     </div>
                     <span>{user.username}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      onPageChange('profile');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-indigo-600 border border-indigo-100 hover:bg-indigo-50 transition-colors duration-200"
+                  >
+                    プロフィール
                   </button>
                   <button
                     onClick={() => {

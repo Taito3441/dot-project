@@ -5,13 +5,14 @@ import {
   onAuthStateChanged,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase';
 import { User, AuthState } from '../types';
 
 interface AuthContextType extends AuthState {
   loginWithGoogle: () => Promise<boolean>;
   logout: () => Promise<void>;
+  updateNickname: (nickname: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -64,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: userData.email,
         avatar: userData.avatar,
         createdAt: userData.createdAt.toDate(),
+        nickname: userData.nickname || '',
       };
     } else {
       // Create new user document
@@ -73,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: firebaseUser.email || '',
         avatar: firebaseUser.photoURL || undefined,
         createdAt: new Date(),
+        nickname: '',
       };
 
       await setDoc(userRef, {
@@ -80,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: newUser.email,
         avatar: newUser.avatar,
         createdAt: new Date(),
+        nickname: '',
       });
 
       return newUser;
@@ -104,10 +108,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateNickname = async (nickname: string) => {
+    if (!authState.user) return;
+    const userRef = doc(db, 'users', authState.user.id);
+    await updateDoc(userRef, { nickname });
+    setAuthState((prev) => prev.user ? {
+      ...prev,
+      user: { ...prev.user, nickname },
+    } : prev);
+  };
+
   const contextValue: AuthContextType = {
     ...authState,
     loginWithGoogle,
     logout,
+    updateNickname,
   };
 
   return (

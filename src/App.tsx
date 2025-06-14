@@ -6,8 +6,9 @@ import { MyPage } from './pages/MyPage';
 import { FirebaseGallery } from './components/Gallery/FirebaseGallery';
 import { AuthForm } from './components/Auth/AuthForm';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Profile from './pages/Profile';
 
-type Page = 'home' | 'gallery' | 'editor' | 'auth' | 'mypage';
+type Page = 'home' | 'gallery' | 'editor' | 'auth' | 'mypage' | 'profile';
 
 const AppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -44,6 +45,8 @@ const AppContent: React.FC = () => {
         return <AuthForm onSuccess={handleAuthSuccess} />;
       case 'mypage':
         return <MyPage onNavigate={handlePageChange} />;
+      case 'profile':
+        return <Profile />;
       default:
         return <Home onNavigate={handlePageChange} />;
     }
