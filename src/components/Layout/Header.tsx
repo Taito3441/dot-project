@@ -79,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                         className="w-full h-full rounded-full object-cover"
                       />
                     ) : (
-                      <i className="fa-solid fa-circle-user text-3xl text-gray-400"></i>
+                      <i className="fa-solid fa-circle-user text-3xl text-blue-400"></i>
                     )}
                   </div>
                   <span className="text-sm font-medium text-gray-700">{user.nickname || 'ゲストさん'}</span>
@@ -165,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                           className="w-full h-full rounded-full object-cover"
                         />
                       ) : (
-                        <i className="fa-solid fa-circle-user text-3xl text-gray-400"></i>
+                        <i className="fa-solid fa-circle-user text-3xl text-blue-400"></i>
                       )}
                     </div>
                     <span>{user.nickname || 'ゲストさん'}</span>
