@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, Grid3X3, Grid2X2, List, Download, Heart, User, Calendar } from 'lucide-react';
 import { FirebasePixelArt } from '../../types';
 import { PixelArtService } from '../../services/pixelArtService';
+import { downloadCanvas } from '../../utils/pixelArt';
 
 interface FirebaseGalleryProps {
   showUserOnly?: boolean;
@@ -56,18 +57,12 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
 
   const handleDownload = async (artwork: FirebasePixelArt) => {
     try {
-      // 画像をfetchしてBlobとしてダウンロード
-      const response = await fetch(artwork.imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${artwork.title.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
+      downloadCanvas(
+        artwork.pixelData,
+        artwork.palette,
+        `${artwork.title.replace(/[^a-zA-Z0-9]/g, '_')}.png`,
+        10
+      );
       // Increment download count
       if (artwork.id) {
         await PixelArtService.incrementDownload(artwork.id);
