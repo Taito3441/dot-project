@@ -50,6 +50,7 @@ export class PixelArtService {
         authorId: user.id,
         authorName: user.username,
         authorEmail: user.email,
+        authorNickname: user.nickname || 'ゲストさん',
         imageUrl,
         pixelData: flattenedCanvas, // ← Flattened
         width: canvas[0]?.length || 32,
@@ -87,8 +88,22 @@ export class PixelArtService {
 
         return {
           id: doc.id,
-          ...data,
+          title: data.title,
+          description: data.description,
+          authorId: data.authorId,
+          authorName: data.authorName,
+          authorEmail: data.authorEmail,
+          authorNickname: data.authorNickname || data.authorName || 'ゲストさん',
+          imageUrl: data.imageUrl,
           pixelData: this.reshapeCanvas(data.pixelData, width, height),
+          width,
+          height,
+          palette: data.palette,
+          likes: data.likes,
+          downloads: data.downloads,
+          isPublic: data.isPublic,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
         } as FirebasePixelArt;
       });
     } catch (error) {
@@ -113,8 +128,22 @@ export class PixelArtService {
 
         return {
           id: doc.id,
-          ...data,
+          title: data.title,
+          description: data.description,
+          authorId: data.authorId,
+          authorName: data.authorName,
+          authorEmail: data.authorEmail,
+          authorNickname: data.authorNickname || data.authorName || 'ゲストさん',
+          imageUrl: data.imageUrl,
           pixelData: this.reshapeCanvas(data.pixelData, width, height),
+          width,
+          height,
+          palette: data.palette,
+          likes: data.likes,
+          downloads: data.downloads,
+          isPublic: data.isPublic,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
         } as FirebasePixelArt;
       });
     } catch (error) {

@@ -47,6 +47,7 @@ export interface FirebasePixelArt {
   authorId: string;
   authorName: string;
   authorEmail: string;
+  authorNickname?: string;
   imageUrl: string;
   pixelData: number[][];
   width: number;

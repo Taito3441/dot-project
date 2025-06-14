@@ -82,7 +82,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                       <User className="h-4 w-4 text-white" />
                     )}
                   </div>
-                  <span className="text-sm font-medium text-gray-700">{user.username}</span>
+                  <span className="text-sm font-medium text-gray-700">{user.nickname || 'ゲストさん'}</span>
                 </button>
                 <button
                   onClick={() => onPageChange('profile')}
@@ -168,7 +168,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onPageChange }) => 
                         <User className="h-4 w-4 text-white" />
                       )}
                     </div>
-                    <span>{user.username}</span>
+                    <span>{user.nickname || 'ゲストさん'}</span>
                   </button>
                   <button
                     onClick={() => {

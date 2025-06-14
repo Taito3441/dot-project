@@ -264,7 +264,7 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
                 <div className="flex items-center space-x-3 mb-4 text-sm text-gray-500">
                   <div className="flex items-center space-x-1">
                     <User className="h-3 w-3" />
-                    <span>{artwork.authorName}</span>
+                    <span>{artwork.authorNickname || 'ゲストさん'}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Calendar className="h-3 w-3" />
