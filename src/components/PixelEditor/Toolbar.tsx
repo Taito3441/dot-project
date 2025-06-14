@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw } from 'lucide-react';
+import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw, Upload } from 'lucide-react';
 import { EditorState } from '../../types';
 
 interface ToolbarProps {
@@ -134,8 +134,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={onSave}
             className="w-full flex items-center justify-center space-x-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
           >
-            <Save className="h-4 w-4" />
-            <span className="text-sm font-medium">Save</span>
+            <Upload className="h-4 w-4" />
+            <span className="text-sm font-medium">投稿</span>
           </button>
           <button
             onClick={onDownload}
