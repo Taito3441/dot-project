@@ -133,13 +133,44 @@ export const Canvas: React.FC<CanvasProps> = ({
     drawPixel(coords.x, coords.y);
   };
 
+  // 線分をBresenham風に取得
+  const getLinePoints = (start: { x: number, y: number }, end: { x: number, y: number }) => {
+    const points: { x: number, y: number }[] = [];
+    const dx = Math.abs(end.x - start.x);
+    const dy = Math.abs(end.y - start.y);
+    const sx = start.x < end.x ? 1 : -1;
+    const sy = start.y < end.y ? 1 : -1;
+    let err = dx - dy;
+    let x = start.x;
+    let y = start.y;
+    while (true) {
+      points.push({ x, y });
+      if (x === end.x && y === end.y) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+    return points;
+  };
+
   const handleMouseMove = (event: React.MouseEvent) => {
     if (!isDrawing || editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
     const coords = getPixelCoordinates(event);
-    if (!coords) return;
+    if (!coords || !dragStart) return;
 
-    drawPixel(coords.x, coords.y);
+    const points = getLinePoints(dragStart, coords);
+    for (const point of points) {
+      drawPixel(point.x, point.y);
+    }
+
+    setDragStart(coords); // 現在の位置を次回の始点にする
   };
 
   const handleMouseUp = () => {

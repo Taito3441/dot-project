@@ -192,6 +192,7 @@ export class PixelArtService {
       // すでに二次元配列
       return flat as number[][];
     }
+    // 一次元配列の場合のみ分割
     const reshaped: number[][] = [];
     for (let i = 0; i < height; i++) {
       reshaped.push((flat as number[]).slice(i * width, (i + 1) * width));

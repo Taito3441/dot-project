@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Palette, User, LogOut, Menu, X, Home, Image, Edit3 } from 'lucide-react';
+import { Palette, LogOut, Menu, X, Home, Image, Edit3 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
