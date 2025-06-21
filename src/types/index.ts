@@ -34,7 +34,7 @@ export interface EditorState {
   canvas: number[][];
   palette: string[];
   currentColor: number;
-  tool: 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse';
+  tool: 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'move';
   zoom: number;
   history: number[][][];
   historyIndex: number;

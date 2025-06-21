@@ -25,6 +25,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'line', icon: Brush, label: '直線', shortcut: 'L' },
     { id: 'rect', icon: Brush, label: '四角', shortcut: 'R' },
     { id: 'ellipse', icon: Brush, label: '円', shortcut: 'O' },
+    { id: 'move', icon: Brush, label: '全体移動', shortcut: 'M' },
   ] as const;
 
   const undo = () => {

@@ -28,6 +28,9 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [rectPreview, setRectPreview] = useState<{ x: number; y: number } | null>(null);
   const [ellipseStart, setEllipseStart] = useState<{ x: number; y: number } | null>(null);
   const [ellipsePreview, setEllipsePreview] = useState<{ x: number; y: number } | null>(null);
+  const [isMovingCanvas, setIsMovingCanvas] = useState(false);
+  const [moveStart, setMoveStart] = useState<{ x: number; y: number } | null>(null);
+  const [moveOffset, setMoveOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -133,6 +136,38 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (isPanning) return; // パン中は描画操作を無効化
     const coords = getPixelCoordinates(event);
     if (!coords) return;
+
+    // 全体移動ツール
+    if (editorState.tool === 'move') {
+      if (!isMovingCanvas) {
+        setIsMovingCanvas(true);
+        setMoveStart({ x: coords.x, y: coords.y });
+        setMoveOffset({ x: 0, y: 0 });
+      } else {
+        // 2回目クリックで確定
+        if (moveOffset.x !== 0 || moveOffset.y !== 0) {
+          saveToHistory();
+          const h = editorState.canvas.length;
+          const w = editorState.canvas[0]?.length || 0;
+          const newCanvas = Array.from({ length: h }, (_, y) =>
+            Array.from({ length: w }, (_, x) => {
+              const srcX = x - moveOffset.x;
+              const srcY = y - moveOffset.y;
+              if (srcX >= 0 && srcX < w && srcY >= 0 && srcY < h) {
+                return editorState.canvas[srcY][srcX];
+              } else {
+                return 0; // はみ出し部分は透明
+              }
+            })
+          );
+          onStateChange({ canvas: newCanvas });
+        }
+        setIsMovingCanvas(false);
+        setMoveStart(null);
+        setMoveOffset({ x: 0, y: 0 });
+      }
+      return;
+    }
 
     if (editorState.tool === 'line') {
       if (!lineStart) {
@@ -272,6 +307,12 @@ export const Canvas: React.FC<CanvasProps> = ({
       if (coords) setEllipsePreview(coords);
       return;
     }
+    if (editorState.tool === 'move' && isMovingCanvas && moveStart) {
+      const coords = getPixelCoordinates(event);
+      if (!coords) return;
+      setMoveOffset({ x: coords.x - moveStart.x, y: coords.y - moveStart.y });
+      return;
+    }
     if (!isDrawing) return;
     if (editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
@@ -292,6 +333,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseUp = () => {
     if (isPanning) return; // パン中は描画操作を無効化
+    // 全体移動ツールはここでは何もしない
     setIsDrawing(false);
     setDragStart(null);
     // React状態に反映
@@ -349,7 +391,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
-      style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : undefined }}
+      style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : editorState.tool === 'move' ? 'move' : undefined }}
     >
       <div
         className="relative"
@@ -366,6 +408,35 @@ export const Canvas: React.FC<CanvasProps> = ({
           onMouseUp={isPanning ? undefined : handleMouseUp}
           onMouseLeave={isPanning ? undefined : handleMouseUp}
         />
+        {/* 全体移動ツールのプレビュー（移動中は半透明で表示） */}
+        {editorState.tool === 'move' && isMovingCanvas && (moveOffset.x !== 0 || moveOffset.y !== 0) && (
+          <canvas
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', opacity: 0.5, zIndex: 20 }}
+            ref={el => {
+              if (!el) return;
+              const ctx = el.getContext('2d');
+              if (!ctx) return;
+              ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+              const h = editorState.canvas.length;
+              const w = editorState.canvas[0]?.length || 0;
+              for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                  const srcX = x - moveOffset.x;
+                  const srcY = y - moveOffset.y;
+                  if (srcX >= 0 && srcX < w && srcY >= 0 && srcY < h) {
+                    const colorIndex = editorState.canvas[srcY][srcX];
+                    if (colorIndex > 0) {
+                      ctx.fillStyle = editorState.palette[colorIndex - 1];
+                      ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+                    }
+                  }
+                }
+              }
+            }}
+          />
+        )}
         {/* 直線ツールのプレビュー */}
         {editorState.tool === 'line' && lineStart && linePreview && (
           <svg
