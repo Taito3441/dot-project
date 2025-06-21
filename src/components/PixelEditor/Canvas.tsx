@@ -24,6 +24,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [lineStart, setLineStart] = useState<{ x: number; y: number } | null>(null);
   const [linePreview, setLinePreview] = useState<{ x: number; y: number } | null>(null);
+  const [rectStart, setRectStart] = useState<{ x: number; y: number } | null>(null);
+  const [rectPreview, setRectPreview] = useState<{ x: number; y: number } | null>(null);
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -175,6 +177,34 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // 四角ツール
+    if (editorState.tool === 'rect') {
+      if (!rectStart) {
+        setRectStart(coords); // 1回目クリックで始点セット
+        setRectPreview(null);
+      } else {
+        saveToHistory();
+        // 2回目クリックで四角形描画
+        const x1 = Math.min(rectStart.x, coords.x);
+        const x2 = Math.max(rectStart.x, coords.x);
+        const y1 = Math.min(rectStart.y, coords.y);
+        const y2 = Math.max(rectStart.y, coords.y);
+        for (let x = x1; x <= x2; x++) {
+          drawPixelDirect(x, y1);
+          drawPixelDirect(x, y2);
+        }
+        for (let y = y1 + 1; y < y2; y++) {
+          drawPixelDirect(x1, y);
+          drawPixelDirect(x2, y);
+        }
+        setRectStart(null);
+        setRectPreview(null);
+        // React状態に反映
+        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+      }
+      return;
+    }
+
     // brush
     saveToHistory();
     drawPixelDirect(coords.x, coords.y);
@@ -211,6 +241,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (editorState.tool === 'line' && lineStart) {
       const coords = getPixelCoordinates(event);
       if (coords) setLinePreview(coords);
+      return;
+    }
+    if (editorState.tool === 'rect' && rectStart) {
+      const coords = getPixelCoordinates(event);
+      if (coords) setRectPreview(coords);
       return;
     }
     if (!isDrawing) return;
@@ -267,7 +302,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
-      style={{ cursor: isPanning ? 'grab' : editorState.tool === 'line' && lineStart ? 'crosshair' : undefined }}
+      style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) ? 'crosshair' : undefined }}
     >
       <div
         className="relative"
@@ -297,6 +332,26 @@ export const Canvas: React.FC<CanvasProps> = ({
               y1={(lineStart.y + 0.5) * pixelSize}
               x2={(linePreview.x + 0.5) * pixelSize}
               y2={(linePreview.y + 0.5) * pixelSize}
+              stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
+              strokeWidth={Math.max(2, pixelSize * 0.2)}
+              strokeDasharray="2,2"
+            />
+          </svg>
+        )}
+        {/* 四角ツールのプレビュー */}
+        {editorState.tool === 'rect' && rectStart && rectPreview && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none"
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ zIndex: 10 }}
+          >
+            <rect
+              x={Math.min(rectStart.x, rectPreview.x) * pixelSize}
+              y={Math.min(rectStart.y, rectPreview.y) * pixelSize}
+              width={Math.abs(rectStart.x - rectPreview.x + 1) * pixelSize}
+              height={Math.abs(rectStart.y - rectPreview.y + 1) * pixelSize}
+              fill="none"
               stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
               strokeWidth={Math.max(2, pixelSize * 0.2)}
               strokeDasharray="2,2"
