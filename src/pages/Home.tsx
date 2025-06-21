@@ -119,11 +119,11 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
               <div className="text-gray-600 font-medium">アーティスト</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
+                <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
                 {stats.loading ? '...' : stats.totalDownloads.toLocaleString()}
-              </div>
+                </div>
               <div className="text-gray-600 font-medium">ダウンロード</div>
-            </div>
+                </div>
             <div className="text-center">
               <div className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
                 {stats.loading ? '...' : stats.totalLikes.toLocaleString()}

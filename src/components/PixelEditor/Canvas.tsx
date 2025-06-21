@@ -18,10 +18,15 @@ export const Canvas: React.FC<CanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const canvasDataRef = useRef<number[][]>([]);
 
   const pixelSize = Math.min(400 / Math.max(width, height) * editorState.zoom, 40);
   const canvasWidth = width * pixelSize;
   const canvasHeight = height * pixelSize;
+
+  useEffect(() => {
+    canvasDataRef.current = editorState.canvas.map(row => [...row]);
+  }, [editorState.canvas]);
 
   useEffect(() => {
     drawCanvas();
@@ -95,28 +100,18 @@ export const Canvas: React.FC<CanvasProps> = ({
     });
   };
 
-  const drawPixel = (x: number, y: number) => {
-    const newCanvas = editorState.canvas.map(row => [...row]);
-    
-    switch (editorState.tool) {
-      case 'brush':
-        newCanvas[y][x] = editorState.currentColor;
-        break;
-      case 'eraser':
-        newCanvas[y][x] = 0;
-        break;
-      case 'eyedropper':
-        const colorIndex = editorState.canvas[y][x];
-        onStateChange({ currentColor: colorIndex });
-        return;
-      case 'fill':
-        const filledCanvas = floodFill(editorState.canvas, x, y, editorState.currentColor);
-        onStateChange({ canvas: filledCanvas });
-        saveToHistory();
-        return;
+  const drawPixelDirect = (x: number, y: number) => {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    const colorIndex = editorState.currentColor;
+    canvasDataRef.current[y][x] = colorIndex;
+    if (colorIndex > 0) {
+      ctx.fillStyle = editorState.palette[colorIndex - 1];
+      ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+    } else {
+      // Eraser (透明)
+      ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
     }
-    
-    onStateChange({ canvas: newCanvas });
   };
 
   const handleMouseDown = (event: React.MouseEvent) => {
@@ -125,12 +120,13 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     setIsDrawing(true);
     setDragStart(coords);
-    
+
     if (editorState.tool !== 'fill') {
       saveToHistory();
     }
-    
-    drawPixel(coords.x, coords.y);
+
+    // drawPixel(coords.x, coords.y);
+    drawPixelDirect(coords.x, coords.y);
   };
 
   // 線分をBresenham風に取得
@@ -167,7 +163,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     const points = getLinePoints(dragStart, coords);
     for (const point of points) {
-      drawPixel(point.x, point.y);
+      drawPixelDirect(point.x, point.y);
     }
 
     setDragStart(coords); // 現在の位置を次回の始点にする
@@ -176,6 +172,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   const handleMouseUp = () => {
     setIsDrawing(false);
     setDragStart(null);
+    // React状態に反映
+    onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
   };
 
   return (
