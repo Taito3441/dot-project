@@ -56,23 +56,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
       {/* Tools */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Tools</h3>
-        <div className="grid grid-cols-2 gap-2">
+        <h3 className="text-base font-semibold text-gray-900 mb-4">Tools</h3>
+        <div className="flex flex-col gap-3">
           {tools.map((tool) => {
             const Icon = tool.icon;
             return (
               <button
                 key={tool.id}
                 onClick={() => onStateChange({ tool: tool.id })}
-                className={`flex items-center space-x-2 p-2 rounded-lg border transition-all duration-200 ${
+                className={`flex items-center space-x-3 p-4 rounded-xl border text-lg transition-all duration-200 min-h-[56px] ${
                   editorState.tool === tool.id
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700 shadow-md'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                 }`}
                 title={`${tool.label} (${tool.shortcut})`}
               >
-                <Icon className="h-4 w-4" />
-                <span className="text-sm font-medium">{tool.label}</span>
+                <Icon className="h-7 w-7" />
+                <span className="font-semibold">{tool.label}</span>
               </button>
             );
           })}

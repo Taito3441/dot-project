@@ -20,7 +20,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const canvasDataRef = useRef<number[][]>([]);
 
-  const pixelSize = Math.min(400 / Math.max(width, height) * editorState.zoom, 40);
+  const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
   const canvasHeight = height * pixelSize;
 
@@ -100,9 +100,14 @@ export const Canvas: React.FC<CanvasProps> = ({
     });
   };
 
-  const drawPixelDirect = (x: number, y: number) => {
+  const drawPixelDirect = (x: number, y: number, erase = false) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
+    if (erase) {
+      canvasDataRef.current[y][x] = 0;
+      ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+      return;
+    }
     const colorIndex = editorState.currentColor;
     canvasDataRef.current[y][x] = colorIndex;
     if (colorIndex > 0) {
@@ -118,14 +123,34 @@ export const Canvas: React.FC<CanvasProps> = ({
     const coords = getPixelCoordinates(event);
     if (!coords) return;
 
+    if (editorState.tool === 'eyedropper') {
+      // スポイト: クリックした位置の色を取得
+      const colorIndex = canvasDataRef.current[coords.y][coords.x];
+      onStateChange({ currentColor: colorIndex });
+      return;
+    }
+
     setIsDrawing(true);
     setDragStart(coords);
 
-    if (editorState.tool !== 'fill') {
+    if (editorState.tool === 'fill') {
       saveToHistory();
+      // 塗りつぶし
+      const newCanvas = floodFill(canvasDataRef.current, coords.x, coords.y, editorState.currentColor);
+      onStateChange({ canvas: newCanvas });
+      setIsDrawing(false);
+      setDragStart(null);
+      return;
     }
 
-    // drawPixel(coords.x, coords.y);
+    if (editorState.tool === 'eraser') {
+      saveToHistory();
+      drawPixelDirect(coords.x, coords.y, true);
+      return;
+    }
+
+    // brush
+    saveToHistory();
     drawPixelDirect(coords.x, coords.y);
   };
 
@@ -156,17 +181,22 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
-    if (!isDrawing || editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
+    if (!isDrawing) return;
+    if (editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
     const coords = getPixelCoordinates(event);
     if (!coords || !dragStart) return;
 
     const points = getLinePoints(dragStart, coords);
     for (const point of points) {
-      drawPixelDirect(point.x, point.y);
+      if (editorState.tool === 'eraser') {
+        drawPixelDirect(point.x, point.y, true);
+      } else {
+        drawPixelDirect(point.x, point.y);
+      }
     }
 
-    setDragStart(coords); // 現在の位置を次回の始点にする
+    setDragStart(coords);
   };
 
   const handleMouseUp = () => {
@@ -177,7 +207,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-center p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+    <div className="flex items-center justify-center p-0 bg-transparent border-none">
       <div className="relative">
         <canvas
           ref={canvasRef}

@@ -159,50 +159,42 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">ドット絵エディター</h1>
-            <p className="text-gray-600 mt-1">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
-          </div>
-          
-          {/* Canvas Size Controls */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">サイズ:</label>
-              <select
-                value={`${canvasSize.width}x${canvasSize.height}`}
-                onChange={(e) => {
-                  const [width, height] = e.target.value.split('x').map(Number);
-                  handleCanvasSizeChange(width, height);
-                }}
-                className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              >
-                <option value="16x16">16×16</option>
-                <option value="32x32">32×32</option>
-                <option value="64x64">64×64</option>
-                <option value="128x128">128×128</option>
-              </select>
-            </div>
-          </div>
+      {/* 見出し部分 */}
+      <div className="w-full max-w-5xl mx-auto pt-8 pb-2 px-4">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">ドット絵エディター</h1>
+        <p className="text-gray-600 mb-4">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
+        <div className="flex items-center space-x-4 absolute right-8 top-8">
+          <label className="text-sm font-medium text-gray-700">サイズ:</label>
+          <select
+            value={`${canvasSize.width}x${canvasSize.height}`}
+            onChange={(e) => {
+              const [width, height] = e.target.value.split('x').map(Number);
+              handleCanvasSizeChange(width, height);
+            }}
+            className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="16x16">16×16</option>
+            <option value="32x32">32×32</option>
+            <option value="64x64">64×64</option>
+            <option value="128x128">128×128</option>
+          </select>
         </div>
-
-        {/* Editor Layout */}
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Toolbar */}
-          <div className="lg:col-span-1">
-            <Toolbar
-              editorState={editorState}
-              onStateChange={updateEditorState}
-              onSave={handleSave}
-              onDownload={handleDownload}
-              onClear={handleClear}
-            />
-          </div>
-
-          {/* Canvas */}
-          <div className="lg:col-span-2">
+      </div>
+      {/* エディタ本体 */}
+      <div className="max-w-full mx-auto px-0 pt-4 pb-8 flex flex-row">
+        {/* Left Sidebar: ツール */}
+        <div className="w-64 min-w-[220px] max-w-[320px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 ml-8">
+          <Toolbar
+            editorState={editorState}
+            onStateChange={updateEditorState}
+            onSave={handleSave}
+            onDownload={handleDownload}
+            onClear={handleClear}
+          />
+        </div>
+        {/* Main Canvas Area */}
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="flex items-center justify-center w-full h-full min-h-[600px]">
             <Canvas
               editorState={editorState}
               onStateChange={updateEditorState}
@@ -210,16 +202,15 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
               height={canvasSize.height}
             />
           </div>
-
-          {/* Color Palette */}
-          <div className="lg:col-span-1">
-            <ColorPalette
-              palette={editorState.palette}
-              currentColor={editorState.currentColor}
-              onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
-              onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
-            />
-          </div>
+        </div>
+        {/* Right Sidebar: カラーパレット */}
+        <div className="w-96 min-w-[340px] max-w-[420px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 mr-16">
+          <ColorPalette
+            palette={editorState.palette}
+            currentColor={editorState.currentColor}
+            onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
+            onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
+          />
         </div>
       </div>
 
