@@ -4,7 +4,7 @@ import { Canvas } from '../components/PixelEditor/Canvas';
 import { ColorPalette } from '../components/PixelEditor/ColorPalette';
 import { Toolbar } from '../components/PixelEditor/Toolbar';
 import { EditorState } from '../types';
-import { createEmptyCanvas, getDefaultPalette, downloadCanvas } from '../utils/pixelArt';
+import { createEmptyCanvas, getDefaultPalette, downloadCanvas, resizeCanvas } from '../utils/pixelArt';
 import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
 
@@ -37,10 +37,10 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
   };
 
   const handleCanvasSizeChange = (width: number, height: number) => {
-    const newCanvas = createEmptyCanvas(width, height);
+    const resizedCanvas = resizeCanvas(editorState.canvas, width, height);
     const newState = {
-      canvas: newCanvas,
-      history: [newCanvas],
+      canvas: resizedCanvas,
+      history: [resizedCanvas],
       historyIndex: 0,
     };
     setCanvasSize({ width, height });

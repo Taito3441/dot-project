@@ -97,3 +97,30 @@ export const floodFill = (
   
   return newCanvas;
 };
+
+// キャンバスサイズ変更時に絵を保持しつつ拡張・縮小する関数
+export const resizeCanvas = (
+  oldCanvas: number[][],
+  newWidth: number,
+  newHeight: number
+): number[][] => {
+  const oldHeight = oldCanvas.length;
+  const oldWidth = oldCanvas[0]?.length || 0;
+  // 新しい空キャンバス
+  const newCanvas = createEmptyCanvas(newWidth, newHeight);
+
+  // どちらも中央揃えでコピー
+  const offsetX = Math.floor((newWidth - oldWidth) / 2);
+  const offsetY = Math.floor((newHeight - oldHeight) / 2);
+
+  for (let y = 0; y < oldHeight; y++) {
+    for (let x = 0; x < oldWidth; x++) {
+      const newX = x + offsetX;
+      const newY = y + offsetY;
+      if (newX >= 0 && newX < newWidth && newY >= 0 && newY < newHeight) {
+        newCanvas[newY][newX] = oldCanvas[y][x];
+      }
+    }
+  }
+  return newCanvas;
+};
