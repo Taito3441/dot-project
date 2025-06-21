@@ -19,6 +19,9 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const canvasDataRef = useRef<number[][]>([]);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -120,6 +123,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseDown = (event: React.MouseEvent) => {
+    if (event.button === 1) return; // ホイールボタンはツール操作を一切無効化
+    if (isPanning) return; // パン中は描画操作を無効化
     const coords = getPixelCoordinates(event);
     if (!coords) return;
 
@@ -181,6 +186,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
+    if (isPanning) return; // パン中は描画操作を無効化
     if (!isDrawing) return;
     if (editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
@@ -200,24 +206,57 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (isPanning) return; // パン中は描画操作を無効化
     setIsDrawing(false);
     setDragStart(null);
     // React状態に反映
     onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
   };
 
+  // パン開始
+  const handlePanMouseDown = (event: React.MouseEvent) => {
+    if (event.button === 1) { // ミドルボタン
+      event.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: event.clientX - panOffset.x, y: event.clientY - panOffset.y });
+    }
+  };
+
+  // パン中
+  const handlePanMouseMove = (event: React.MouseEvent) => {
+    if (isPanning && panStart) {
+      setPanOffset({ x: event.clientX - panStart.x, y: event.clientY - panStart.y });
+    }
+  };
+
+  // パン終了
+  const handlePanMouseUp = () => {
+    setIsPanning(false);
+    setPanStart(null);
+  };
+
   return (
-    <div className="flex items-center justify-center p-0 bg-transparent border-none">
-      <div className="relative">
+    <div
+      className="flex items-center justify-center p-0 bg-transparent border-none select-none"
+      onMouseMove={handlePanMouseMove}
+      onMouseUp={handlePanMouseUp}
+      onMouseLeave={handlePanMouseUp}
+      style={{ cursor: isPanning ? 'grab' : undefined }}
+    >
+      <div
+        className="relative"
+        style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, transition: isPanning ? 'none' : 'transform 0.1s' }}
+        onMouseDown={handlePanMouseDown}
+      >
         <canvas
           ref={canvasRef}
           width={canvasWidth}
           height={canvasHeight}
           className="border border-gray-300 rounded shadow-sm cursor-crosshair bg-white"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onMouseDown={isPanning ? undefined : handleMouseDown}
+          onMouseMove={isPanning ? undefined : handleMouseMove}
+          onMouseUp={isPanning ? undefined : handleMouseUp}
+          onMouseLeave={isPanning ? undefined : handleMouseUp}
         />
         <div className="absolute -top-6 left-0 text-xs text-gray-500">
           {width} × {height} pixels
