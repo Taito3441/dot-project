@@ -26,6 +26,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [linePreview, setLinePreview] = useState<{ x: number; y: number } | null>(null);
   const [rectStart, setRectStart] = useState<{ x: number; y: number } | null>(null);
   const [rectPreview, setRectPreview] = useState<{ x: number; y: number } | null>(null);
+  const [ellipseStart, setEllipseStart] = useState<{ x: number; y: number } | null>(null);
+  const [ellipsePreview, setEllipsePreview] = useState<{ x: number; y: number } | null>(null);
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -205,6 +207,23 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // 円形ツール
+    if (editorState.tool === 'ellipse') {
+      if (!ellipseStart) {
+        setEllipseStart(coords); // 1回目クリックで始点セット
+        setEllipsePreview(null);
+      } else {
+        saveToHistory();
+        // 2回目クリックで楕円描画
+        drawEllipseOnCanvas(ellipseStart, coords);
+        setEllipseStart(null);
+        setEllipsePreview(null);
+        // React状態に反映
+        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+      }
+      return;
+    }
+
     // brush
     saveToHistory();
     drawPixelDirect(coords.x, coords.y);
@@ -246,6 +265,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (editorState.tool === 'rect' && rectStart) {
       const coords = getPixelCoordinates(event);
       if (coords) setRectPreview(coords);
+      return;
+    }
+    if (editorState.tool === 'ellipse' && ellipseStart) {
+      const coords = getPixelCoordinates(event);
+      if (coords) setEllipsePreview(coords);
       return;
     }
     if (!isDrawing) return;
@@ -296,13 +320,36 @@ export const Canvas: React.FC<CanvasProps> = ({
     setPanStart(null);
   };
 
+  // 楕円描画アルゴリズム
+  const drawEllipseOnCanvas = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    const x1 = Math.min(start.x, end.x);
+    const x2 = Math.max(start.x, end.x);
+    const y1 = Math.min(start.y, end.y);
+    const y2 = Math.max(start.y, end.y);
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const rx = (x2 - x1) / 2;
+    const ry = (y2 - y1) / 2;
+    for (let y = y1; y <= y2; y++) {
+      for (let x = x1; x <= x2; x++) {
+        // 枠線のみ描画
+        const dx = (x - cx) / (rx || 1);
+        const dy = (y - cy) / (ry || 1);
+        const dist = dx * dx + dy * dy;
+        if (Math.abs(dist - 1) < 0.08) {
+          drawPixelDirect(x, y);
+        }
+      }
+    }
+  };
+
   return (
     <div
       className="flex items-center justify-center p-0 bg-transparent border-none select-none"
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
-      style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) ? 'crosshair' : undefined }}
+      style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : undefined }}
     >
       <div
         className="relative"
@@ -351,6 +398,26 @@ export const Canvas: React.FC<CanvasProps> = ({
               y={Math.min(rectStart.y, rectPreview.y) * pixelSize}
               width={Math.abs(rectStart.x - rectPreview.x + 1) * pixelSize}
               height={Math.abs(rectStart.y - rectPreview.y + 1) * pixelSize}
+              fill="none"
+              stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
+              strokeWidth={Math.max(2, pixelSize * 0.2)}
+              strokeDasharray="2,2"
+            />
+          </svg>
+        )}
+        {/* 円形ツールのプレビュー */}
+        {editorState.tool === 'ellipse' && ellipseStart && ellipsePreview && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none"
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ zIndex: 10 }}
+          >
+            <ellipse
+              cx={((ellipseStart.x + ellipsePreview.x) / 2 + 0.5) * pixelSize}
+              cy={((ellipseStart.y + ellipsePreview.y) / 2 + 0.5) * pixelSize}
+              rx={Math.abs(ellipseStart.x - ellipsePreview.x + 1) * pixelSize / 2}
+              ry={Math.abs(ellipseStart.y - ellipsePreview.y + 1) * pixelSize / 2}
               fill="none"
               stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
               strokeWidth={Math.max(2, pixelSize * 0.2)}
