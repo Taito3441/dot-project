@@ -26,7 +26,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
       palette: getDefaultPalette(),
       currentColor: 1,
       tool: 'brush',
-      zoom: 1,
+      zoom: 1.2,
       history: [initialCanvas],
       historyIndex: 0,
     };
@@ -161,8 +161,10 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
     <div className="min-h-screen bg-gray-50">
       {/* 見出し部分 */}
       <div className="w-full max-w-5xl mx-auto pt-8 pb-2 px-4">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">ドット絵エディター</h1>
-        <p className="text-gray-600 mb-4">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
+        <div className="flex flex-row items-baseline gap-6 mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 mb-0">ドット絵エディター</h1>
+          <p className="text-gray-600 text-lg mb-0">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
+        </div>
         <div className="flex items-center space-x-4 absolute right-8 top-8">
           <label className="text-sm font-medium text-gray-700">サイズ:</label>
           <select
