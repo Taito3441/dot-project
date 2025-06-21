@@ -52,7 +52,7 @@ export class PixelArtService {
         authorEmail: user.email,
         authorNickname: user.nickname || 'ゲストさん',
         imageUrl,
-        pixelData: flattenedCanvas, // ← Flattened
+        pixelData: canvas, // ← flattenせず二次元配列のまま保存
         width: canvas[0]?.length || 32,
         height: canvas.length,
         palette,
