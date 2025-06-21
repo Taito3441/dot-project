@@ -18,10 +18,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClear,
 }) => {
   const tools = [
-    { id: 'brush', icon: Brush, label: 'Brush', shortcut: 'B' },
-    { id: 'eraser', icon: Eraser, label: 'Eraser', shortcut: 'E' },
-    { id: 'eyedropper', icon: Eyedropper, label: 'Eyedropper', shortcut: 'I' },
-    { id: 'fill', icon: PaintBucket, label: 'Fill', shortcut: 'F' },
+    { id: 'brush', icon: Brush, label: 'ペン', shortcut: 'B' },
+    { id: 'eraser', icon: Eraser, label: '消しゴム', shortcut: 'E' },
+    { id: 'eyedropper', icon: Eyedropper, label: 'スポイト', shortcut: 'I' },
+    { id: 'fill', icon: PaintBucket, label: '塗りつぶし', shortcut: 'F' },
+    { id: 'line', icon: Brush, label: '直線', shortcut: 'L' },
   ] as const;
 
   const undo = () => {

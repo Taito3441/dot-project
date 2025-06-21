@@ -22,6 +22,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [lineStart, setLineStart] = useState<{ x: number; y: number } | null>(null);
+  const [linePreview, setLinePreview] = useState<{ x: number; y: number } | null>(null);
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -128,6 +130,25 @@ export const Canvas: React.FC<CanvasProps> = ({
     const coords = getPixelCoordinates(event);
     if (!coords) return;
 
+    if (editorState.tool === 'line') {
+      if (!lineStart) {
+        setLineStart(coords); // 1回目クリックで始点セット
+        setLinePreview(null);
+      } else {
+        saveToHistory();
+        // 2回目クリックで直線描画
+        const points = getLinePoints(lineStart, coords);
+        for (const point of points) {
+          drawPixelDirect(point.x, point.y);
+        }
+        setLineStart(null); // リセット
+        setLinePreview(null);
+        // React状態に反映
+        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+      }
+      return;
+    }
+
     if (editorState.tool === 'eyedropper') {
       // スポイト: クリックした位置の色を取得
       const colorIndex = canvasDataRef.current[coords.y][coords.x];
@@ -187,6 +208,11 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseMove = (event: React.MouseEvent) => {
     if (isPanning) return; // パン中は描画操作を無効化
+    if (editorState.tool === 'line' && lineStart) {
+      const coords = getPixelCoordinates(event);
+      if (coords) setLinePreview(coords);
+      return;
+    }
     if (!isDrawing) return;
     if (editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
@@ -241,7 +267,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
-      style={{ cursor: isPanning ? 'grab' : undefined }}
+      style={{ cursor: isPanning ? 'grab' : editorState.tool === 'line' && lineStart ? 'crosshair' : undefined }}
     >
       <div
         className="relative"
@@ -258,6 +284,25 @@ export const Canvas: React.FC<CanvasProps> = ({
           onMouseUp={isPanning ? undefined : handleMouseUp}
           onMouseLeave={isPanning ? undefined : handleMouseUp}
         />
+        {/* 直線ツールのプレビュー */}
+        {editorState.tool === 'line' && lineStart && linePreview && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none"
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ zIndex: 10 }}
+          >
+            <line
+              x1={(lineStart.x + 0.5) * pixelSize}
+              y1={(lineStart.y + 0.5) * pixelSize}
+              x2={(linePreview.x + 0.5) * pixelSize}
+              y2={(linePreview.y + 0.5) * pixelSize}
+              stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
+              strokeWidth={Math.max(2, pixelSize * 0.2)}
+              strokeDasharray="2,2"
+            />
+          </svg>
+        )}
         <div className="absolute -top-6 left-0 text-xs text-gray-500">
           {width} × {height} pixels
         </div>
