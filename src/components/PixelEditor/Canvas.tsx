@@ -9,6 +9,14 @@ interface CanvasProps {
   height: number;
 }
 
+type Layer = {
+  id: string;
+  name: string;
+  canvas: number[][];
+  opacity: number; // 0~1
+  visible: boolean;
+};
+
 export const Canvas: React.FC<CanvasProps> = ({
   editorState,
   onStateChange,
@@ -37,51 +45,97 @@ export const Canvas: React.FC<CanvasProps> = ({
   const canvasHeight = height * pixelSize;
 
   useEffect(() => {
-    canvasDataRef.current = editorState.canvas.map(row => [...row]);
-  }, [editorState.canvas]);
+    // 選択中レイヤーのcanvasで初期化
+    const layer = editorState.layers[editorState.currentLayer];
+    if (layer) {
+      canvasDataRef.current = layer.canvas.map(row => [...row]);
+    }
+  }, [editorState.currentLayer, editorState.layers, width, height]);
 
   useEffect(() => {
     drawCanvas();
-  }, [editorState.canvas, editorState.palette, pixelSize]);
+  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer]);
+
+  const hexToRgba = (hex: string, alpha: number = 1) => {
+    // #RRGGBB or #RGB
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 7) {
+      r = parseInt(hex.slice(1, 3), 16);
+      g = parseInt(hex.slice(3, 5), 16);
+      b = parseInt(hex.slice(5, 7), 16);
+    } else if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    }
+    return { r, g, b, a: alpha };
+  };
+
+  // アルファブレンド: fg over bg
+  const blend = (fg: {r:number,g:number,b:number,a:number}, bg: {r:number,g:number,b:number,a:number}) => {
+    const a = fg.a + bg.a * (1 - fg.a);
+    if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+    return {
+      r: Math.round((fg.r * fg.a + bg.r * bg.a * (1 - fg.a)) / a),
+      g: Math.round((fg.g * fg.a + bg.g * bg.a * (1 - fg.a)) / a),
+      b: Math.round((fg.b * fg.a + bg.b * bg.a * (1 - fg.a)) / a),
+      a,
+    };
+  };
 
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
-    
+
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Draw background grid
-    ctx.fillStyle = '#f9fafb';
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    
+
+    // Draw background grid (市松模様)
+    const gridSize = Math.max(4, Math.floor(pixelSize / 3));
+    for (let y = 0; y < canvasHeight; y += gridSize) {
+      for (let x = 0; x < canvasWidth; x += gridSize) {
+        ctx.fillStyle = ((x / gridSize + y / gridSize) % 2 === 0) ? '#f3f4f6' : '#e5e7eb';
+        ctx.fillRect(x, y, gridSize, gridSize);
+      }
+    }
+
     // Draw grid lines
     ctx.strokeStyle = '#e5e7eb';
     ctx.lineWidth = 0.5;
-    
     for (let x = 0; x <= width; x++) {
       ctx.beginPath();
       ctx.moveTo(x * pixelSize, 0);
       ctx.lineTo(x * pixelSize, canvasHeight);
       ctx.stroke();
     }
-    
     for (let y = 0; y <= height; y++) {
       ctx.beginPath();
       ctx.moveTo(0, y * pixelSize);
       ctx.lineTo(canvasWidth, y * pixelSize);
       ctx.stroke();
     }
-    
-    // Draw pixels
+
+    // --- レイヤー合成 ---
+    // 下から上へvisibleなレイヤーを合成
+    const layers = editorState.layers;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const colorIndex = editorState.canvas[y][x];
-        if (colorIndex > 0) {
-          ctx.fillStyle = editorState.palette[colorIndex - 1];
+        // 背景: 完全透明
+        let color = { r: 0, g: 0, b: 0, a: 0 };
+        for (let l = 0; l < layers.length; l++) {
+          const layer = layers[l];
+          if (!layer.visible) continue;
+          const colorIndex = layer.canvas[y][x];
+          if (colorIndex > 0) {
+            const hex = editorState.palette[colorIndex - 1];
+            const fg = hexToRgba(hex, layer.opacity);
+            color = blend(fg, color);
+          }
+        }
+        if (color.a > 0) {
+          ctx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a})`;
           ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
         }
       }
@@ -104,31 +158,25 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const saveToHistory = () => {
     const newHistory = editorState.history.slice(0, editorState.historyIndex + 1);
-    newHistory.push(editorState.canvas.map(row => [...row]));
-    
+    // layers全体をディープコピーして保存
+    const layersCopy = editorState.layers.map(layer => ({
+      ...layer,
+      canvas: layer.canvas.map(row => [...row]),
+    }));
+    newHistory.push(layersCopy);
     onStateChange({
       history: newHistory.slice(-50), // Keep last 50 states
-      historyIndex: Math.min(newHistory.length - 1, 49),
+      historyIndex: Math.min(newHistory.length, 49),
     });
   };
 
   const drawPixelDirect = (x: number, y: number, erase = false) => {
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
     if (erase) {
       canvasDataRef.current[y][x] = 0;
-      ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
       return;
     }
     const colorIndex = editorState.currentColor;
     canvasDataRef.current[y][x] = colorIndex;
-    if (colorIndex > 0) {
-      ctx.fillStyle = editorState.palette[colorIndex - 1];
-      ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
-    } else {
-      // Eraser (透明)
-      ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
-    }
   };
 
   const handleMouseDown = (event: React.MouseEvent) => {
@@ -146,21 +194,24 @@ export const Canvas: React.FC<CanvasProps> = ({
       } else {
         // 2回目クリックで確定
         if (moveOffset.x !== 0 || moveOffset.y !== 0) {
-          saveToHistory();
-          const h = editorState.canvas.length;
-          const w = editorState.canvas[0]?.length || 0;
+          const h = editorState.layers[editorState.currentLayer].canvas.length;
+          const w = editorState.layers[editorState.currentLayer].canvas[0]?.length || 0;
           const newCanvas = Array.from({ length: h }, (_, y) =>
             Array.from({ length: w }, (_, x) => {
               const srcX = x - moveOffset.x;
               const srcY = y - moveOffset.y;
               if (srcX >= 0 && srcX < w && srcY >= 0 && srcY < h) {
-                return editorState.canvas[srcY][srcX];
+                return editorState.layers[editorState.currentLayer].canvas[srcY][srcX];
               } else {
                 return 0; // はみ出し部分は透明
               }
             })
           );
-          onStateChange({ canvas: newCanvas });
+          // 選択中レイヤーのcanvasのみを更新
+          const newLayers = editorState.layers.map((l, i) =>
+            i === editorState.currentLayer ? { ...l, canvas: newCanvas } : l
+          );
+          onStateChange({ layers: newLayers });
         }
         setIsMovingCanvas(false);
         setMoveStart(null);
@@ -174,7 +225,6 @@ export const Canvas: React.FC<CanvasProps> = ({
         setLineStart(coords); // 1回目クリックで始点セット
         setLinePreview(null);
       } else {
-        saveToHistory();
         // 2回目クリックで直線描画
         const points = getLinePoints(lineStart, coords);
         for (const point of points) {
@@ -183,7 +233,10 @@ export const Canvas: React.FC<CanvasProps> = ({
         setLineStart(null); // リセット
         setLinePreview(null);
         // React状態に反映
-        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+        const newLayers = editorState.layers.map((l, i) =>
+          i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+        );
+        onStateChange({ layers: newLayers });
       }
       return;
     }
@@ -199,18 +252,25 @@ export const Canvas: React.FC<CanvasProps> = ({
     setDragStart(coords);
 
     if (editorState.tool === 'fill') {
-      saveToHistory();
       // 塗りつぶし
       const newCanvas = floodFill(canvasDataRef.current, coords.x, coords.y, editorState.currentColor);
-      onStateChange({ canvas: newCanvas });
+      // 選択中レイヤーのcanvasのみを更新
+      const newLayers = editorState.layers.map((l, i) =>
+        i === editorState.currentLayer ? { ...l, canvas: newCanvas } : l
+      );
+      onStateChange({ layers: newLayers });
       setIsDrawing(false);
       setDragStart(null);
       return;
     }
 
     if (editorState.tool === 'eraser') {
-      saveToHistory();
       drawPixelDirect(coords.x, coords.y, true);
+      // 即時反映
+      const newLayers = editorState.layers.map((l, i) =>
+        i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+      );
+      onStateChange({ layers: newLayers });
       return;
     }
 
@@ -220,7 +280,6 @@ export const Canvas: React.FC<CanvasProps> = ({
         setRectStart(coords); // 1回目クリックで始点セット
         setRectPreview(null);
       } else {
-        saveToHistory();
         // 2回目クリックで四角形描画
         const x1 = Math.min(rectStart.x, coords.x);
         const x2 = Math.max(rectStart.x, coords.x);
@@ -237,7 +296,10 @@ export const Canvas: React.FC<CanvasProps> = ({
         setRectStart(null);
         setRectPreview(null);
         // React状態に反映
-        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+        const newLayers = editorState.layers.map((l, i) =>
+          i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+        );
+        onStateChange({ layers: newLayers });
       }
       return;
     }
@@ -248,20 +310,26 @@ export const Canvas: React.FC<CanvasProps> = ({
         setEllipseStart(coords); // 1回目クリックで始点セット
         setEllipsePreview(null);
       } else {
-        saveToHistory();
         // 2回目クリックで楕円描画
         drawEllipseOnCanvas(ellipseStart, coords);
         setEllipseStart(null);
         setEllipsePreview(null);
         // React状態に反映
-        onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+        const newLayers = editorState.layers.map((l, i) =>
+          i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+        );
+        onStateChange({ layers: newLayers });
       }
       return;
     }
 
     // brush
-    saveToHistory();
     drawPixelDirect(coords.x, coords.y);
+    // 即時反映
+    const newLayers = editorState.layers.map((l, i) =>
+      i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+    );
+    onStateChange({ layers: newLayers });
   };
 
   // 線分をBresenham風に取得
@@ -320,14 +388,23 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!coords || !dragStart) return;
 
     const points = getLinePoints(dragStart, coords);
+    let painted = false;
     for (const point of points) {
       if (editorState.tool === 'eraser') {
         drawPixelDirect(point.x, point.y, true);
+        painted = true;
       } else {
         drawPixelDirect(point.x, point.y);
+        painted = true;
       }
     }
-
+    if (painted) {
+      // 即時反映: 選択中レイヤーのcanvasを更新
+      const newLayers = editorState.layers.map((l, i) =>
+        i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+      );
+      onStateChange({ layers: newLayers });
+    }
     setDragStart(coords);
   };
 
@@ -337,7 +414,12 @@ export const Canvas: React.FC<CanvasProps> = ({
     setIsDrawing(false);
     setDragStart(null);
     // React状態に反映
-    onStateChange({ canvas: canvasDataRef.current.map(row => [...row]) });
+    const newLayers = editorState.layers.map((l, i) =>
+      i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+    );
+    onStateChange({ layers: newLayers });
+    // ここで履歴を記録
+    saveToHistory();
   };
 
   // パン開始
@@ -419,14 +501,14 @@ export const Canvas: React.FC<CanvasProps> = ({
               const ctx = el.getContext('2d');
               if (!ctx) return;
               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-              const h = editorState.canvas.length;
-              const w = editorState.canvas[0]?.length || 0;
+              const h = editorState.layers[editorState.currentLayer].canvas.length;
+              const w = editorState.layers[editorState.currentLayer].canvas[0]?.length || 0;
               for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
                   const srcX = x - moveOffset.x;
                   const srcY = y - moveOffset.y;
                   if (srcX >= 0 && srcX < w && srcY >= 0 && srcY < h) {
-                    const colorIndex = editorState.canvas[srcY][srcX];
+                    const colorIndex = editorState.layers[editorState.currentLayer].canvas[srcY][srcX];
                     if (colorIndex > 0) {
                       ctx.fillStyle = editorState.palette[colorIndex - 1];
                       ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);

@@ -17,6 +17,19 @@ import { db, storage } from '../config/firebase';
 import { FirebasePixelArt, User } from '../types';
 import { canvasToImageData } from '../utils/pixelArt';
 
+// DataURL→Blob変換ユーティリティ
+function dataURLtoBlob(dataurl: string): Blob {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)![1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
 export class PixelArtService {
   private static COLLECTION_NAME = 'pixelArts';
 
@@ -31,17 +44,13 @@ export class PixelArtService {
       // Generate image data
       const imageData = canvasToImageData(canvas, palette, 10);
 
-      // Convert base64 to blob
-      const response = await fetch(imageData);
-      const blob = await response.blob();
+      // Convert base64 to blob (fetchを使わずdataURLtoBlobで変換)
+      const blob = dataURLtoBlob(imageData);
 
       // Upload image to Firebase Storage
       const imageRef = ref(storage, `pixel-arts/${Date.now()}_${user.id}.png`);
       const uploadResult = await uploadBytes(imageRef, blob);
       const imageUrl = await getDownloadURL(uploadResult.ref);
-
-      // Flatten canvas for Firestore (1D配列に変換)
-      const flattenedCanvas = canvas.flat();
 
       // Save artwork data to Firestore
       const artworkData: Omit<FirebasePixelArt, 'id'> = {
@@ -52,7 +61,7 @@ export class PixelArtService {
         authorEmail: user.email,
         authorNickname: user.nickname || 'ゲストさん',
         imageUrl,
-        pixelData: canvas, // ← flattenせず二次元配列のまま保存
+        pixelData: canvas.flat(), // Firestoreには一次元配列で保存
         width: canvas[0]?.length || 32,
         height: canvas.length,
         palette,

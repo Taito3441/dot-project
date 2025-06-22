@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Save, X, Upload } from 'lucide-react';
+import { Save, X, Upload, Eye, EyeOff } from 'lucide-react';
 import { Canvas } from '../components/PixelEditor/Canvas';
 import { ColorPalette } from '../components/PixelEditor/ColorPalette';
 import { Toolbar } from '../components/PixelEditor/Toolbar';
-import { EditorState } from '../types';
+import { EditorState, Layer } from '../types';
 import { createEmptyCanvas, getDefaultPalette, downloadCanvas, resizeCanvas } from '../utils/pixelArt';
 import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
@@ -12,36 +12,111 @@ interface EditorProps {
   onNavigate: (page: string) => void;
 }
 
+// --- レイヤー合成関数 ---
+function hexToRgba(hex: string, alpha: number = 1) {
+  let r = 0, g = 0, b = 0;
+  if (hex.length === 7) {
+    r = parseInt(hex.slice(1, 3), 16);
+    g = parseInt(hex.slice(3, 5), 16);
+    b = parseInt(hex.slice(5, 7), 16);
+  } else if (hex.length === 4) {
+    r = parseInt(hex[1] + hex[1], 16);
+    g = parseInt(hex[2] + hex[2], 16);
+    b = parseInt(hex[3] + hex[3], 16);
+  }
+  return { r, g, b, a: alpha };
+}
+
+function mergeLayers(layers: Layer[], palette: string[], width: number, height: number): number[][] {
+  // 下から上へvisibleなレイヤーをアルファブレンド
+  const merged = createEmptyCanvas(width, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let color = { r: 0, g: 0, b: 0, a: 0 };
+      let topIndex = 0;
+      for (let l = 0; l < layers.length; l++) {
+        const layer = layers[l];
+        if (!layer.visible) continue;
+        const colorIndex = layer.canvas[y][x];
+        if (colorIndex > 0) {
+          const hex = palette[colorIndex - 1];
+          const fg = hexToRgba(hex, layer.opacity);
+          // アルファブレンド
+          const a = fg.a + color.a * (1 - fg.a);
+          if (a > 0) {
+            color = {
+              r: Math.round((fg.r * fg.a + color.r * color.a * (1 - fg.a)) / a),
+              g: Math.round((fg.g * fg.a + color.g * color.a * (1 - fg.a)) / a),
+              b: Math.round((fg.b * fg.a + color.b * color.a * (1 - fg.a)) / a),
+              a,
+            };
+            topIndex = colorIndex;
+          }
+        }
+      }
+      merged[y][x] = color.a > 0 ? topIndex : 0;
+    }
+  }
+  return merged;
+}
+
 export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
   const { isAuthenticated, user } = useAuth();
   const [canvasSize, setCanvasSize] = useState({ width: 32, height: 32 });
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveData, setSaveData] = useState({ title: '', description: '' });
   const [isUploading, setIsUploading] = useState(false);
+  const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
+  const [isSliderActive, setIsSliderActive] = useState(false);
 
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
+    const initialLayer: Layer = {
+      id: 'layer-1',
+      name: 'レイヤー 1',
+      canvas: initialCanvas,
+      opacity: 1,
+      visible: true,
+    };
     return {
       canvas: initialCanvas,
       palette: getDefaultPalette(),
       currentColor: 1,
       tool: 'brush',
       zoom: 1.2,
-      history: [initialCanvas],
+      history: [[{ ...initialLayer, canvas: initialCanvas.map(row => [...row]) }]],
       historyIndex: 0,
+      layers: [initialLayer],
+      currentLayer: 0,
     };
   });
 
   const updateEditorState = (newState: Partial<EditorState>) => {
-    setEditorState(prev => ({ ...prev, ...newState }));
+    setEditorState(prev => {
+      let next = { ...prev, ...newState };
+      // canvasはlayers[currentLayer].canvasで常に同期
+      if (next.layers && typeof next.currentLayer === 'number' && next.layers[next.currentLayer]) {
+        next.canvas = next.layers[next.currentLayer].canvas;
+      }
+      return next;
+    });
   };
 
   const handleCanvasSizeChange = (width: number, height: number) => {
-    const resizedCanvas = resizeCanvas(editorState.canvas, width, height);
+    // すべてのレイヤーをresizeCanvas
+    const newLayers = editorState.layers.map(layer => ({
+      ...layer,
+      canvas: resizeCanvas(layer.canvas, width, height),
+    }));
+    // 選択中レイヤーのcanvasを新しいサイズで取得
+    const newCanvas = newLayers[editorState.currentLayer]?.canvas || createEmptyCanvas(width, height);
     const newState = {
-      canvas: resizedCanvas,
-      history: [resizedCanvas],
+      canvas: newCanvas,
+      history: [newLayers],
       historyIndex: 0,
+      layers: newLayers,
     };
     setCanvasSize({ width, height });
     updateEditorState(newState);
@@ -60,20 +135,24 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
 
     setIsUploading(true);
     try {
+      // レイヤーを統合
+      const merged = mergeLayers(
+        editorState.layers,
+        editorState.palette,
+        canvasSize.width,
+        canvasSize.height
+      );
       await PixelArtService.uploadPixelArt(
         saveData.title || 'Untitled',
         saveData.description || '',
-        editorState.canvas,
+        merged,
         editorState.palette,
         user
       );
-      
       setShowSaveDialog(false);
       setSaveData({ title: '', description: '' });
-      
       // Show success message
       alert('作品が正常にアップロードされました！');
-      
       // Navigate to gallery
       onNavigate('gallery');
     } catch (error) {
@@ -85,8 +164,15 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
   };
 
   const handleDownload = () => {
+    // レイヤーを統合
+    const merged = mergeLayers(
+      editorState.layers,
+      editorState.palette,
+      canvasSize.width,
+      canvasSize.height
+    );
     downloadCanvas(
-      editorState.canvas,
+      merged,
       editorState.palette,
       saveData.title ? `${saveData.title.replace(/[^a-zA-Z0-9]/g, '_')}.png` : 'pixel-art.png'
     );
@@ -96,9 +182,22 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
     if (confirm('キャンバスをクリアしますか？この操作は元に戻せません。')) {
       const newCanvas = createEmptyCanvas(canvasSize.width, canvasSize.height);
       updateEditorState({
-        canvas: newCanvas,
-        history: [newCanvas],
+        history: [[{
+          id: 'layer-1',
+          name: 'レイヤー 1',
+          canvas: newCanvas,
+          opacity: 1,
+          visible: true,
+        }]],
         historyIndex: 0,
+        layers: [{
+          id: 'layer-1',
+          name: 'レイヤー 1',
+          canvas: newCanvas,
+          opacity: 1,
+          visible: true,
+        }],
+        currentLayer: 0,
       });
     }
   };
@@ -114,8 +213,10 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
               // Redo
               if (editorState.historyIndex < editorState.history.length - 1) {
                 const newIndex = editorState.historyIndex + 1;
+                const newLayers = editorState.history[newIndex];
                 updateEditorState({
-                  canvas: editorState.history[newIndex],
+                  layers: newLayers,
+                  canvas: newLayers[editorState.currentLayer]?.canvas || newLayers[0].canvas,
                   historyIndex: newIndex,
                 });
               }
@@ -123,8 +224,10 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
               // Undo
               if (editorState.historyIndex > 0) {
                 const newIndex = editorState.historyIndex - 1;
+                const newLayers = editorState.history[newIndex];
                 updateEditorState({
-                  canvas: editorState.history[newIndex],
+                  layers: newLayers,
+                  canvas: newLayers[editorState.currentLayer]?.canvas || newLayers[0].canvas,
                   historyIndex: newIndex,
                 });
               }
@@ -155,7 +258,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [editorState.historyIndex, editorState.history]);
+  }, [editorState.historyIndex, editorState.history, editorState.currentLayer]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -183,7 +286,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
         </div>
       </div>
       {/* エディタ本体 */}
-      <div className="max-w-full mx-auto px-0 pt-4 pb-8 flex flex-row">
+      <div className="max-w-full mx-auto px-0 pt-1 pb-8 flex flex-row">
         {/* Left Sidebar: ツール */}
         <div className="w-64 min-w-[220px] max-w-[320px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 ml-8">
           <Toolbar
@@ -195,8 +298,8 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
           />
         </div>
         {/* Main Canvas Area */}
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="flex items-center justify-center w-full h-full min-h-[600px]">
+        <div className="flex-1 flex flex-col items-center justify-start">
+          <div className="flex items-center justify-center w-full h-full min-h-[800px] flex-col mt-0">
             <Canvas
               editorState={editorState}
               onStateChange={updateEditorState}
@@ -205,14 +308,131 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
             />
           </div>
         </div>
-        {/* Right Sidebar: カラーパレット */}
-        <div className="w-96 min-w-[340px] max-w-[420px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 mr-16">
+        {/* Right Sidebar: カラーパレット＋レイヤー */}
+        <div className="w-[23rem] min-w-[320px] max-w-[380px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-0 mr-16">
           <ColorPalette
             palette={editorState.palette}
             currentColor={editorState.currentColor}
             onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
             onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
           />
+          {/* --- レイヤーUI（縦並び, ドラッグ対応） --- */}
+          <div className="w-full mt-4 p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px]">
+            {editorState.layers.slice().reverse().map((layer, revIdx) => {
+              // reverseしているので、実際のidxは layers.length - 1 - revIdx
+              const idx = editorState.layers.length - 1 - revIdx;
+              return (
+                <div
+                  key={layer.id}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
+                    ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'} \
+                    ${dragLayerIdx === idx ? 'opacity-60 border-indigo-400' : ''} \
+                    ${dragOverIdx === idx && dragLayerIdx !== null && dragLayerIdx !== idx ? 'ring-2 ring-indigo-300' : ''}`}
+                  draggable={!isSliderActive}
+                  onDragStart={() => setDragLayerIdx(idx)}
+                  onDragEnd={() => { setDragLayerIdx(null); setDragOverIdx(null); }}
+                  onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+                  onDragLeave={e => { e.preventDefault(); setDragOverIdx(null); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (dragLayerIdx === null || dragLayerIdx === idx) return;
+                    const newLayers = [...editorState.layers];
+                    const moved = newLayers.splice(dragLayerIdx, 1)[0];
+                    newLayers.splice(idx, 0, moved);
+                    let newCurrent = idx;
+                    if (editorState.currentLayer === dragLayerIdx) newCurrent = idx;
+                    else if (editorState.currentLayer > dragLayerIdx && editorState.currentLayer <= idx) newCurrent = editorState.currentLayer - 1;
+                    else if (editorState.currentLayer < dragLayerIdx && editorState.currentLayer >= idx) newCurrent = editorState.currentLayer + 1;
+                    else newCurrent = editorState.currentLayer;
+                    updateEditorState({ layers: newLayers, currentLayer: newCurrent });
+                    setDragLayerIdx(null); setDragOverIdx(null);
+                  }}
+                  style={{ cursor: 'grab' }}
+                  onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
+                >
+                  <button
+                    className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-colors duration-150 \
+                      ${layer.visible ? 'border-green-400 bg-green-50 text-green-600' : 'border-gray-300 bg-gray-100 text-gray-400'}`}
+                    title={layer.visible ? '表示中' : '非表示'}
+                    onClick={e => {
+                      e.stopPropagation();
+                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, visible: !l.visible } : l);
+                      updateEditorState({ layers: newLayers });
+                    }}
+                  >
+                    {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                  <input
+                    className="w-24 px-1 py-0.5 rounded border border-gray-200 text-sm bg-transparent focus:border-indigo-400"
+                    value={layer.name}
+                    onChange={e => {
+                      e.stopPropagation();
+                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, name: e.target.value } : l);
+                      updateEditorState({ layers: newLayers });
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                  {editorState.layers.length > 1 && (
+                    <button
+                      className="ml-1 text-red-400 hover:text-red-600"
+                      title="レイヤー削除"
+                      onClick={e => {
+                        e.stopPropagation();
+                        const newLayers = editorState.layers.filter((_, i) => i !== idx);
+                        let newCurrent = editorState.currentLayer;
+                        if (newCurrent >= newLayers.length) newCurrent = newLayers.length - 1;
+                        updateEditorState({ layers: newLayers, currentLayer: newCurrent, canvas: newLayers[newCurrent].canvas });
+                      }}
+                    >✕</button>
+                  )}
+                  {/* 不透明度スライダー */}
+                  <div className="flex items-center gap-1 w-28">
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={layer.opacity}
+                      onChange={e => {
+                        const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
+                        updateEditorState({ layers: newLayers });
+                      }}
+                      onPointerDown={e => {
+                        setSliderDragStart({ x: e.clientX, y: e.clientY });
+                        setIsSliderActive(true);
+                        e.stopPropagation();
+                      }}
+                      onPointerMove={e => {
+                        if (!sliderDragStart) return;
+                        const dx = Math.abs(e.clientX - sliderDragStart.x);
+                        const dy = Math.abs(e.clientY - sliderDragStart.y);
+                        if (dx > dy) {
+                          e.stopPropagation();
+                        }
+                      }}
+                      onPointerUp={() => { setSliderDragStart(null); setIsSliderActive(false); }}
+                      onPointerLeave={() => { setSliderDragStart(null); setIsSliderActive(false); }}
+                      className="w-20 accent-indigo-500"
+                    />
+                    <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold"
+              onClick={() => {
+                const newLayer: Layer = {
+                  id: `layer-${Date.now()}`,
+                  name: `レイヤー ${editorState.layers.length + 1}`,
+                  canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
+                  opacity: 1,
+                  visible: true,
+                };
+                updateEditorState({ layers: [...editorState.layers, newLayer], currentLayer: editorState.layers.length });
+              }}
+            >＋レイヤー追加</button>
+          </div>
         </div>
       </div>
 

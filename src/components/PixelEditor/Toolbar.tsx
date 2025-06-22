@@ -31,9 +31,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const undo = () => {
     if (editorState.historyIndex > 0) {
       const newIndex = editorState.historyIndex - 1;
+      const layers = editorState.history[newIndex];
       onStateChange({
-        canvas: editorState.history[newIndex],
+        layers,
         historyIndex: newIndex,
+        canvas: layers[editorState.currentLayer]?.canvas,
       });
     }
   };
@@ -41,9 +43,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const redo = () => {
     if (editorState.historyIndex < editorState.history.length - 1) {
       const newIndex = editorState.historyIndex + 1;
+      const layers = editorState.history[newIndex];
       onStateChange({
-        canvas: editorState.history[newIndex],
+        layers,
         historyIndex: newIndex,
+        canvas: layers[editorState.currentLayer]?.canvas,
       });
     }
   };
@@ -68,15 +72,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <button
                 key={tool.id}
                 onClick={() => onStateChange({ tool: tool.id })}
-                className={`flex items-center space-x-3 p-4 rounded-xl border text-lg transition-all duration-200 min-h-[56px] ${
-                  editorState.tool === tool.id
-                    ? 'border-indigo-400 bg-indigo-50 text-indigo-700 shadow-md'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
+                className={`flex items-center space-x-4 p-5 rounded-2xl border text-xl transition-all duration-200 min-h-[64px] \
+                  ${editorState.tool === tool.id
+                    ? 'border-indigo-500 bg-indigo-100 text-indigo-700 shadow-lg'
+                    : 'border-gray-200 hover:border-indigo-400 hover:bg-indigo-100'}
+                `}
                 title={`${tool.label} (${tool.shortcut})`}
               >
-                <Icon className="h-7 w-7" />
-                <span className="font-semibold">{tool.label}</span>
+                <Icon className="h-9 w-9" />
+                <span className="font-semibold text-xl">{tool.label}</span>
               </button>
             );
           })}
