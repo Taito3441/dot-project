@@ -1,3 +1,5 @@
+import { createEmptyCanvas, hexToRgba } from '../utils/pixelArt';
+
 export interface User {
   id: string;
   username: string;
