@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Grid3X3, Grid2X2, List, Download, Heart, User, Calendar } from 'lucide-react';
+import { Search, Filter, Grid3X3, Grid2X2, List, Download, Heart, User, Calendar, X } from 'lucide-react';
 import { FirebasePixelArt } from '../../types';
 import { PixelArtService } from '../../services/pixelArtService';
 import { downloadCanvas } from '../../utils/pixelArt';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface FirebaseGalleryProps {
   showUserOnly?: boolean;
@@ -18,6 +19,7 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'popular' | 'downloads'>('newest');
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'list'>('grid-large');
+  const { user } = useAuth();
 
   useEffect(() => {
     loadArtworks();
@@ -74,6 +76,17 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
       }
     } catch (error) {
       console.error('Error downloading artwork:', error);
+    }
+  };
+
+  const handleDelete = async (artworkId: string) => {
+    if (!window.confirm('本当に削除しますか？')) return;
+    try {
+      await PixelArtService.deleteArtwork(artworkId);
+      setArtworks(prev => prev.filter(art => art.id !== artworkId));
+    } catch (error) {
+      alert('削除に失敗しました');
+      console.error('Error deleting artwork:', error);
     }
   };
 
@@ -244,22 +257,31 @@ export const FirebaseGallery: React.FC<FirebaseGalleryProps> = ({
               </div>
 
               {/* Content */}
-              <div className="p-4">
+              <div className="p-4 relative">
+                {/* 削除ボタン（投稿主のみ表示） */}
+                {user && artwork.authorId === user.id && artwork.id && (
+                  <button
+                    onClick={() => handleDelete(artwork.id!)}
+                    className="absolute top-2 right-2 text-gray-400 hover:text-red-600 p-1 rounded-full transition-colors duration-200"
+                    title="削除"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="font-semibold text-gray-900 text-lg line-clamp-1 group-hover:text-indigo-600 transition-colors duration-200">
                     {artwork.title}
                   </h3>
-                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    {artwork.width}×{artwork.height}
-                  </div>
                 </div>
-
                 {artwork.description && (
                   <p className="text-sm text-gray-600 mb-3 line-clamp-2">
                     {artwork.description}
                   </p>
                 )}
-
+                {/* サイズ表記をここに移動 */}
+                <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full mb-3 inline-block">
+                  {artwork.width}×{artwork.height}
+                </div>
                 {/* Author and Date */}
                 <div className="flex items-center space-x-3 mb-4 text-sm text-gray-500">
                   <div className="flex items-center space-x-1">
