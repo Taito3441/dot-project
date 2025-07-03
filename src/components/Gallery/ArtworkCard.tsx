@@ -1,19 +1,28 @@
 import React from 'react';
 import { Heart, Download, User, Calendar } from 'lucide-react';
 import { PixelArt } from '../../types';
+import { FirebasePixelArt } from '../../types';
 
 interface ArtworkCardProps {
-  artwork: PixelArt;
+  artwork: PixelArt | FirebasePixelArt;
   onLike?: (artworkId: string) => void;
-  onDownload?: (artwork: PixelArt) => void;
+  onDownload?: (artwork: PixelArt | FirebasePixelArt) => void;
+  likedUserIds?: string[];
+  currentUserId?: string;
 }
 
 export const ArtworkCard: React.FC<ArtworkCardProps> = ({
   artwork,
   onLike,
   onDownload,
+  likedUserIds = [],
+  currentUserId,
 }) => {
-  const formatDate = (date: Date) => {
+  const formatDate = (date: Date | any) => {
+    if (!date) return '';
+    if (typeof date === 'object' && typeof date.toDate === 'function') {
+      date = date.toDate();
+    }
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short',
@@ -21,12 +30,17 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({
     }).format(date);
   };
 
+  const isLiked = currentUserId ? likedUserIds.includes(currentUserId) : false;
+
+  const authorName = (artwork as any).author?.username || (artwork as any).authorNickname || (artwork as any).authorName || 'ゲストさん';
+  const imageUrl = (artwork as any).imageData || (artwork as any).imageUrl;
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
       {/* Image */}
       <div className="aspect-square bg-gray-50 overflow-hidden">
         <img
-          src={artwork.imageData}
+          src={imageUrl ? imageUrl : ''}
           alt={artwork.title}
           className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
           style={{ imageRendering: 'pixelated' }}
@@ -54,7 +68,7 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({
         <div className="flex items-center space-x-3 mb-4 text-sm text-gray-500">
           <div className="flex items-center space-x-1">
             <User className="h-3 w-3" />
-            <span>{artwork.author.username}</span>
+            <span>{authorName}</span>
           </div>
           <div className="flex items-center space-x-1">
             <Calendar className="h-3 w-3" />
@@ -67,10 +81,13 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({
           <div className="flex items-center space-x-4">
             {onLike && (
               <button
-                onClick={() => onLike(artwork.id)}
-                className="flex items-center space-x-1 text-gray-500 hover:text-red-500 transition-colors duration-200"
+                onClick={() => currentUserId && onLike(artwork.id)}
+                className={`flex items-center space-x-1 transition-colors duration-200 ${isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
+                disabled={!currentUserId}
+                title={!currentUserId ? 'ログインしてください' : ''}
+                style={!currentUserId ? { cursor: 'not-allowed' } : {}}
               >
-                <Heart className="h-4 w-4" />
+                <Heart className="h-4 w-4" fill={isLiked ? '#ef4444' : 'none'} />
                 <span className="text-sm">{artwork.likes}</span>
               </button>
             )}

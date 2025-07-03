@@ -70,6 +70,7 @@ export interface FirebasePixelArt {
   isPublic: boolean;
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
+  likedUserIds?: string[];
 }
 
 export interface ChatGPTIntegration {

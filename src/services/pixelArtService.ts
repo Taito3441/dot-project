@@ -61,7 +61,7 @@ export class PixelArtService {
         authorEmail: user.email,
         authorNickname: user.nickname || 'ゲストさん',
         imageUrl,
-        pixelData: canvas.flat(), // Firestoreには一次元配列で保存
+        pixelData: canvas.flat() as any, // Firestoreには一次元配列で保存
         width: canvas[0]?.length || 32,
         height: canvas.length,
         palette,
@@ -161,12 +161,32 @@ export class PixelArtService {
     }
   }
 
-  static async likeArtwork(artworkId: string): Promise<void> {
+  static async likeArtwork(artworkId: string, userId: string): Promise<'liked' | 'unliked'> {
     try {
       const artworkRef = doc(db, this.COLLECTION_NAME, artworkId);
+      const artworkSnap = await getDocs(query(collection(db, this.COLLECTION_NAME), where('__name__', '==', artworkId)));
+      if (artworkSnap.empty) throw new Error('Artwork not found');
+      const docData = artworkSnap.docs[0].data();
+      const likedUserIds: string[] = docData.likedUserIds || [];
+      let newLikedUserIds: string[];
+      let incrementValue: number;
+      let result: 'liked' | 'unliked';
+      if (likedUserIds.includes(userId)) {
+        // 既にいいね済み→取り消し
+        newLikedUserIds = likedUserIds.filter(id => id !== userId);
+        incrementValue = -1;
+        result = 'unliked';
+      } else {
+        // まだいいねしていない→追加
+        newLikedUserIds = [...likedUserIds, userId];
+        incrementValue = 1;
+        result = 'liked';
+      }
       await updateDoc(artworkRef, {
-        likes: increment(1),
+        likes: increment(incrementValue),
+        likedUserIds: newLikedUserIds,
       });
+      return result;
     } catch (error) {
       console.error('Error liking artwork:', error);
       throw error;
