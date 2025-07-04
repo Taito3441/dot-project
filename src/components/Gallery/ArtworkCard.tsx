@@ -33,14 +33,14 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({
   const isLiked = currentUserId ? likedUserIds.includes(currentUserId) : false;
 
   const authorName = (artwork as any).author?.username || (artwork as any).authorNickname || (artwork as any).authorName || 'ゲストさん';
-  const imageUrl = (artwork as any).imageData || (artwork as any).imageUrl;
+  const imageUrl: string = (artwork as any).imageData || (artwork as any).imageUrl || '';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
       {/* Image */}
       <div className="aspect-square bg-gray-50 overflow-hidden">
         <img
-          src={imageUrl ? imageUrl : ''}
+          src={imageUrl}
           alt={artwork.title}
           className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
           style={{ imageRendering: 'pixelated' }}
