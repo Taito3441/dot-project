@@ -50,6 +50,7 @@ export interface EditorState {
   historyIndex: number;
   layers: Layer[];
   currentLayer: number;
+  showGrid: boolean; // マス目表示のオンオフ
 }
 
 export interface FirebasePixelArt {

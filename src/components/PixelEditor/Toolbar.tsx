@@ -134,6 +134,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
+      {/* Grid Toggle */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Grid</h3>
+        <div className="flex items-center space-x-2">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editorState.showGrid}
+              onChange={e => onStateChange({ showGrid: e.target.checked })}
+              className="form-checkbox h-5 w-5 text-indigo-600"
+            />
+            <span className="ml-2 text-sm text-gray-700">マス目を表示</span>
+          </label>
+        </div>
+      </div>
+
       {/* Actions */}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Actions</h3>

@@ -81,7 +81,7 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({
           <div className="flex items-center space-x-4">
             {onLike && (
               <button
-                onClick={() => currentUserId && onLike(artwork.id)}
+                onClick={() => currentUserId && artwork.id && onLike(artwork.id)}
                 className={`flex items-center space-x-1 transition-colors duration-200 ${isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'}`}
                 disabled={!currentUserId}
                 title={!currentUserId ? 'ログインしてください' : ''}

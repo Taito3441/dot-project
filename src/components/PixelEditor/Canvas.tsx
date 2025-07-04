@@ -54,7 +54,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     drawCanvas();
-  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer]);
+  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid]);
 
   const hexToRgba = (hex: string, alpha: number = 1) => {
     // #RRGGBB or #RGB
@@ -102,19 +102,21 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     // Draw grid lines
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 0.5;
-    for (let x = 0; x <= width; x++) {
-      ctx.beginPath();
-      ctx.moveTo(x * pixelSize, 0);
-      ctx.lineTo(x * pixelSize, canvasHeight);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= height; y++) {
-      ctx.beginPath();
-      ctx.moveTo(0, y * pixelSize);
-      ctx.lineTo(canvasWidth, y * pixelSize);
-      ctx.stroke();
+    if (editorState.showGrid) {
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 0.25;
+      for (let x = 0; x <= width; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * pixelSize, 0);
+        ctx.lineTo(x * pixelSize, canvasHeight);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= height; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * pixelSize);
+        ctx.lineTo(canvasWidth, y * pixelSize);
+        ctx.stroke();
+      }
     }
 
     // --- レイヤー合成 ---

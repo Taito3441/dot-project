@@ -90,6 +90,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
       historyIndex: 0,
       layers: [initialLayer],
       currentLayer: 0,
+      showGrid: true,
     };
   });
 
