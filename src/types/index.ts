@@ -51,6 +51,7 @@ export interface EditorState {
   layers: Layer[];
   currentLayer: number;
   showGrid: boolean; // マス目表示のオンオフ
+  backgroundPattern: 'light' | 'dark'; // 背景パターン
 }
 
 export interface FirebasePixelArt {

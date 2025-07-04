@@ -150,6 +150,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
+      {/* Background Pattern Toggle */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Background</h3>
+        <div className="flex items-center space-x-2">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editorState.backgroundPattern === 'dark'}
+              onChange={e => onStateChange({ backgroundPattern: e.target.checked ? 'dark' : 'light' })}
+              className="form-checkbox h-5 w-5 text-indigo-600"
+            />
+            <span className="ml-2 text-sm text-gray-700">ダークパターン</span>
+          </label>
+        </div>
+      </div>
+
       {/* Actions */}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Actions</h3>

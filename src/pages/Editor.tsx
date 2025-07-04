@@ -91,6 +91,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
       layers: [initialLayer],
       currentLayer: 0,
       showGrid: true,
+      backgroundPattern: 'light',
     };
   });
 

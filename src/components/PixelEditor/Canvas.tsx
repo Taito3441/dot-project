@@ -54,7 +54,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     drawCanvas();
-  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid]);
+  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid, editorState.backgroundPattern]);
 
   const hexToRgba = (hex: string, alpha: number = 1) => {
     // #RRGGBB or #RGB
@@ -94,16 +94,19 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // Draw background grid (市松模様)
     const gridSize = Math.max(4, Math.floor(pixelSize / 3));
+    const isDark = editorState.backgroundPattern === 'dark';
+    const colorA = isDark ? '#222' : '#f3f4f6';
+    const colorB = isDark ? '#444' : '#e5e7eb';
     for (let y = 0; y < canvasHeight; y += gridSize) {
       for (let x = 0; x < canvasWidth; x += gridSize) {
-        ctx.fillStyle = ((x / gridSize + y / gridSize) % 2 === 0) ? '#f3f4f6' : '#e5e7eb';
+        ctx.fillStyle = ((x / gridSize + y / gridSize) % 2 === 0) ? colorA : colorB;
         ctx.fillRect(x, y, gridSize, gridSize);
       }
     }
 
     // Draw grid lines
     if (editorState.showGrid) {
-      ctx.strokeStyle = '#000';
+      ctx.strokeStyle = editorState.backgroundPattern === 'dark' ? '#fff' : '#000';
       ctx.lineWidth = 0.25;
       for (let x = 0; x <= width; x++) {
         ctx.beginPath();
