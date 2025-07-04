@@ -8,6 +8,7 @@ interface ToolbarProps {
   onSave: () => void;
   onDownload: () => void;
   onClear: () => void;
+  onCanvasSizeChange: (width: number, height: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -16,6 +17,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onSave,
   onDownload,
   onClear,
+  onCanvasSizeChange,
 }) => {
   const tools = [
     { id: 'brush', icon: Brush, label: 'ペン', shortcut: 'B' },
@@ -132,6 +134,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <ZoomIn className="h-4 w-4" />
           </button>
         </div>
+      </div>
+
+      {/* Canvas Size Selector */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Canvas Size</h3>
+        <select
+          value={`${editorState.layers[0].canvas[0].length}x${editorState.layers[0].canvas.length}`}
+          onChange={e => {
+            const [width, height] = e.target.value.split('x').map(Number);
+            onCanvasSizeChange(width, height);
+          }}
+          className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full"
+        >
+          <option value="16x16">16×16</option>
+          <option value="32x32">32×32</option>
+          <option value="64x64">64×64</option>
+          <option value="128x128">128×128</option>
+        </select>
       </div>
 
       {/* Grid Toggle */}

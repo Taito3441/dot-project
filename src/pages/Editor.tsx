@@ -270,22 +270,6 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
           <h1 className="text-3xl font-bold text-gray-900 mb-0">ドット絵エディター</h1>
           <p className="text-gray-600 text-lg mb-0">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
         </div>
-        <div className="flex items-center space-x-4 absolute right-8 top-8">
-          <label className="text-sm font-medium text-gray-700">サイズ:</label>
-          <select
-            value={`${canvasSize.width}x${canvasSize.height}`}
-            onChange={(e) => {
-              const [width, height] = e.target.value.split('x').map(Number);
-              handleCanvasSizeChange(width, height);
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
-            <option value="16x16">16×16</option>
-            <option value="32x32">32×32</option>
-            <option value="64x64">64×64</option>
-            <option value="128x128">128×128</option>
-          </select>
-        </div>
       </div>
       {/* エディタ本体 */}
       <div className="max-w-full mx-auto px-0 pt-1 pb-8 flex flex-row">
@@ -297,6 +281,7 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
             onSave={handleSave}
             onDownload={handleDownload}
             onClear={handleClear}
+            onCanvasSizeChange={handleCanvasSizeChange}
           />
         </div>
         {/* Main Canvas Area */}
