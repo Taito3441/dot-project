@@ -139,13 +139,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Grid</h3>
         <div className="flex items-center space-x-2">
           <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={editorState.showGrid}
-              onChange={e => onStateChange({ showGrid: e.target.checked })}
-              className="form-checkbox h-5 w-5 text-indigo-600"
-            />
-            <span className="ml-2 text-sm text-gray-700">マス目を表示</span>
+            <span className="mr-2 text-sm text-gray-700">マス目を表示</span>
+            <span className="relative inline-block w-12 h-7 align-middle select-none">
+              <input
+                type="checkbox"
+                checked={editorState.showGrid}
+                onChange={e => onStateChange({ showGrid: e.target.checked })}
+                className="sr-only peer"
+              />
+              <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
+              <span className="absolute left-1 top-1 w-5 h-5 rounded-full bg-white transition peer-checked:translate-x-5" />
+            </span>
           </label>
         </div>
       </div>
@@ -155,13 +159,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Background</h3>
         <div className="flex items-center space-x-2">
           <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={editorState.backgroundPattern === 'dark'}
-              onChange={e => onStateChange({ backgroundPattern: e.target.checked ? 'dark' : 'light' })}
-              className="form-checkbox h-5 w-5 text-indigo-600"
-            />
-            <span className="ml-2 text-sm text-gray-700">ダークパターン</span>
+            <span className="mr-2 text-sm text-gray-700">ダークパターン</span>
+            <span className="relative inline-block w-12 h-7 align-middle select-none">
+              <input
+                type="checkbox"
+                checked={editorState.backgroundPattern === 'dark'}
+                onChange={e => onStateChange({ backgroundPattern: e.target.checked ? 'dark' : 'light' })}
+                className="sr-only peer"
+              />
+              <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
+              <span className="absolute left-1 top-1 w-5 h-5 rounded-full bg-white transition peer-checked:translate-x-5" />
+            </span>
           </label>
         </div>
       </div>
