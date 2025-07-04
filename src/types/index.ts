@@ -73,6 +73,8 @@ export interface FirebasePixelArt {
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
   likedUserIds?: string[];
+  isDraft?: boolean;
+  layers?: LayerFirestore[]; // Firestore保存用
 }
 
 export interface ChatGPTIntegration {
@@ -80,6 +82,14 @@ export interface ChatGPTIntegration {
   suggestion?: string;
   colorAdvice?: string[];
   ideaPrompt?: string;
+}
+
+export interface LayerFirestore {
+  id: string;
+  name: string;
+  canvas: number[]; // Firestore保存用は一次元配列
+  opacity: number;
+  visible: boolean;
 }
 
 function mergeLayers(layers: Layer[], palette: string[], width: number, height: number): number[][] {

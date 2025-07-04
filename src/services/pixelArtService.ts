@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
-import { FirebasePixelArt, User } from '../types';
+import { FirebasePixelArt, User, Layer, LayerFirestore } from '../types';
 import { canvasToImageData } from '../utils/pixelArt';
 
 // DataURL→Blob変換ユーティリティ
@@ -38,7 +38,9 @@ export class PixelArtService {
     description: string,
     canvas: number[][],
     palette: string[],
-    user: User
+    user: User,
+    isDraft: boolean = false,
+    layers?: Layer[]
   ): Promise<string> {
     try {
       // Generate image data
@@ -52,8 +54,13 @@ export class PixelArtService {
       const uploadResult = await uploadBytes(imageRef, blob);
       const imageUrl = await getDownloadURL(uploadResult.ref);
 
+      // Firestoreに保存するlayersはcanvasを一次元配列に変換
+      const safeLayers: LayerFirestore[] | undefined = layers
+        ? layers.map(l => ({ ...l, canvas: l.canvas.flat() }))
+        : undefined;
+
       // Save artwork data to Firestore
-      const artworkData: Omit<FirebasePixelArt, 'id'> = {
+      const artworkData: Omit<FirebasePixelArt, 'id'> & { layers?: LayerFirestore[] } = {
         title,
         description,
         authorId: user.id,
@@ -67,7 +74,9 @@ export class PixelArtService {
         palette,
         likes: 0,
         downloads: 0,
-        isPublic: true,
+        isPublic: !isDraft,
+        isDraft,
+        layers: safeLayers,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -128,13 +137,11 @@ export class PixelArtService {
         where('authorId', '==', userId),
         orderBy('createdAt', 'desc')
       );
-
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         const width = data.width || 32;
         const height = data.height || 32;
-
         return {
           id: doc.id,
           title: data.title,
@@ -151,6 +158,10 @@ export class PixelArtService {
           likes: data.likes,
           downloads: data.downloads,
           isPublic: data.isPublic,
+          isDraft: data.isDraft,
+          layers: data.layers
+            ? data.layers.map((l: any) => ({ ...l, canvas: this.reshapeCanvas(l.canvas, width, height) }))
+            : [{ id: 'layer-1', name: 'レイヤー 1', canvas: this.reshapeCanvas(data.pixelData, width, height), opacity: 1, visible: true }],
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         } as FirebasePixelArt;
@@ -215,7 +226,7 @@ export class PixelArtService {
   }
 
   // ヘルパー：一次元配列 → 二次元配列へ復元
-  private static reshapeCanvas(flat: any, width: number, height: number): number[][] {
+  static reshapeCanvas(flat: any, width: number, height: number): number[][] {
     if (!flat || (Array.isArray(flat) && flat.length === 0)) return [];
     if (Array.isArray(flat) && Array.isArray(flat[0])) {
       // すでに二次元配列
@@ -260,6 +271,105 @@ export class PixelArtService {
       };
     } catch (error) {
       console.error('Error fetching stats:', error);
+      throw error;
+    }
+  }
+
+  static async getUserDrafts(userId: string): Promise<FirebasePixelArt[]> {
+    try {
+      const q = query(
+        collection(db, this.COLLECTION_NAME),
+        where('authorId', '==', userId),
+        where('isDraft', '==', true),
+        orderBy('createdAt', 'desc')
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        const width = data.width || 32;
+        const height = data.height || 32;
+        return {
+          id: doc.id,
+          title: data.title,
+          description: data.description,
+          authorId: data.authorId,
+          authorName: data.authorName,
+          authorEmail: data.authorEmail,
+          authorNickname: data.authorNickname || data.authorName || 'ゲストさん',
+          imageUrl: data.imageUrl,
+          pixelData: this.reshapeCanvas(data.pixelData, width, height),
+          width,
+          height,
+          palette: data.palette,
+          likes: data.likes,
+          downloads: data.downloads,
+          isPublic: data.isPublic,
+          isDraft: data.isDraft,
+          layers: data.layers
+            ? data.layers.map((l: any) => ({ ...l, canvas: this.reshapeCanvas(l.canvas, width, height) }))
+            : [{ id: 'layer-1', name: 'レイヤー 1', canvas: this.reshapeCanvas(data.pixelData, width, height), opacity: 1, visible: true }],
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        } as FirebasePixelArt;
+      });
+    } catch (error) {
+      console.error('Error fetching user drafts:', error);
+      throw error;
+    }
+  }
+
+  static async updatePixelArt(
+    artworkId: string,
+    data: Partial<Omit<FirebasePixelArt, 'id' | 'createdAt' | 'authorId' | 'authorName' | 'authorEmail' | 'authorNickname'>> & { updatedAt?: any; isDraft?: boolean; isPublic?: boolean; layers?: any[] }
+  ): Promise<void> {
+    try {
+      const artworkRef = doc(db, this.COLLECTION_NAME, artworkId);
+      // Firestoreに保存するlayersはcanvasを一次元配列に変換（すでに一次元ならそのまま）
+      let safeLayers: LayerFirestore[] | undefined = undefined;
+      if (data.layers) {
+        safeLayers = data.layers.map(l => ({
+          ...l,
+          canvas: Array.isArray(l.canvas)
+            ? Array.isArray(l.canvas[0])
+              ? Array.prototype.slice.call(l.canvas.flat())
+              : Array.prototype.slice.call(l.canvas)
+            : []
+        }));
+      }
+      console.log('updatePixelArt safeLayers', safeLayers);
+      // pixelDataもArray.fromで通常配列に変換（多次元配列ならflat）
+      let safePixelData: any = data.pixelData;
+      if (Array.isArray(safePixelData)) {
+        if (Array.isArray(safePixelData[0])) {
+          safePixelData = (safePixelData as any[]).flat();
+        }
+        safePixelData = Array.from(safePixelData as any);
+      }
+      // paletteもArray.fromで通常配列に変換
+      let safePalette: any = data.palette;
+      if (Array.isArray(safePalette)) {
+        safePalette = Array.from(safePalette as any);
+      }
+      // layersがundefinedの場合はArray.fromを呼ばない
+      if (safeLayers) {
+        safeLayers = safeLayers.map(l => ({
+          ...l,
+          canvas: Array.isArray(l.canvas) ? Array.from(l.canvas as any) : l.canvas
+        }));
+      }
+      const updateData: any = {
+        ...data,
+        pixelData: safePixelData,
+        palette: safePalette,
+        updatedAt: serverTimestamp(),
+      };
+      if (safeLayers) {
+        updateData.layers = safeLayers;
+      }
+      console.log('updateDoc data', updateData);
+      await updateDoc(artworkRef, updateData);
+    } catch (error) {
+      console.error('Error updating pixel art:', error);
       throw error;
     }
   }

@@ -6,6 +6,7 @@ interface ToolbarProps {
   editorState: EditorState;
   onStateChange: (newState: Partial<EditorState>) => void;
   onSave: () => void;
+  onSaveDraft: () => void;
   onDownload: () => void;
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
@@ -15,6 +16,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   editorState,
   onStateChange,
   onSave,
+  onSaveDraft,
   onDownload,
   onClear,
   onCanvasSizeChange,
@@ -198,6 +200,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Actions</h3>
         <div className="space-y-2">
+          <button
+            onClick={onSaveDraft}
+            className="w-full flex items-center justify-center space-x-2 p-2 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 transition-colors duration-200"
+          >
+            <Save className="h-4 w-4" />
+            <span className="text-sm font-medium">下書き保存</span>
+          </button>
           <button
             onClick={onSave}
             className="w-full flex items-center justify-center space-x-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"

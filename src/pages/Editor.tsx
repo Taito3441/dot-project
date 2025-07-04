@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Save, X, Upload, Eye, EyeOff } from 'lucide-react';
 import { Canvas } from '../components/PixelEditor/Canvas';
 import { ColorPalette } from '../components/PixelEditor/ColorPalette';
@@ -8,10 +8,7 @@ import { createEmptyCanvas, getDefaultPalette, downloadCanvas, resizeCanvas } fr
 import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
 import type { ColorPaletteProps } from '../components/PixelEditor/ColorPalette';
-
-interface EditorProps {
-  onNavigate: (page: string) => void;
-}
+import { useParams } from "react-router-dom";
 
 // --- レイヤー合成関数 ---
 function hexToRgba(hex: string, alpha: number = 1) {
@@ -61,18 +58,24 @@ function mergeLayers(layers: Layer[], palette: string[], width: number, height: 
   return merged;
 }
 
-export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
+const AUTO_SAVE_INTERVAL = 30000; // 30秒
+
+const Editor: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
+  const { artworkId } = useParams<{ artworkId: string }>();
   const [canvasSize, setCanvasSize] = useState({ width: 32, height: 32 });
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveData, setSaveData] = useState({ title: '', description: '' });
   const [isUploading, setIsUploading] = useState(false);
+  const [isDraftSave, setIsDraftSave] = useState(false);
   const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
   const [isSliderActive, setIsSliderActive] = useState(false);
   // カラーパレットの座標を管理
   const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
 
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
@@ -127,42 +130,58 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
     updateEditorState(newState);
   };
 
-  const handleSave = () => {
+  const handleSave = (asDraft = false) => {
     if (!isAuthenticated) {
-      onNavigate('auth');
       return;
     }
+    setIsDraftSave(asDraft);
     setShowSaveDialog(true);
   };
 
   const handleSaveConfirm = async () => {
     if (!user) return;
-
     setIsUploading(true);
     try {
-      // レイヤーを統合
       const merged = mergeLayers(
         editorState.layers,
         editorState.palette,
         canvasSize.width,
         canvasSize.height
       );
-      await PixelArtService.uploadPixelArt(
-        saveData.title || 'Untitled',
-        saveData.description || '',
-        merged,
-        editorState.palette,
-        user
-      );
-      setShowSaveDialog(false);
-      setSaveData({ title: '', description: '' });
-      // Show success message
-      alert('作品が正常にアップロードされました！');
-      // Navigate to gallery
-      onNavigate('gallery');
+      if (artworkId) {
+        // 既存作品の上書き保存
+        await PixelArtService.updatePixelArt(artworkId, {
+          title: saveData.title || 'Untitled',
+          description: saveData.description || '',
+          pixelData: merged,
+          width: canvasSize.width,
+          height: canvasSize.height,
+          palette: editorState.palette,
+          isDraft: isDraftSave,
+          isPublic: !isDraftSave,
+          layers: editorState.layers.map(l => ({ ...l, canvas: l.canvas.flat() })) as any,
+        });
+        setShowSaveDialog(false);
+        setSaveData({ title: '', description: '' });
+        alert(isDraftSave ? '下書き保存成功しました！' : '作品を投稿しました！');
+      } else {
+        // 新規作成
+        await PixelArtService.uploadPixelArt(
+          saveData.title || 'Untitled',
+          saveData.description || '',
+          merged,
+          editorState.palette,
+          user,
+          isDraftSave,
+          editorState.layers.map(l => ({ ...l, canvas: l.canvas.flat() })) as any
+        );
+        setShowSaveDialog(false);
+        setSaveData({ title: '', description: '' });
+        alert(isDraftSave ? '下書き保存成功しました！' : '作品が正常にアップロードされました！');
+      }
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('アップロードに失敗しました。もう一度お試しください。');
+      alert('保存に失敗しました。もう一度お試しください。');
     } finally {
       setIsUploading(false);
     }
@@ -206,6 +225,80 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
       });
     }
   };
+
+  // 自動保存関数
+  const autoSave = async () => {
+    if (!user) return;
+    const merged = mergeLayers(
+      editorState.layers,
+      editorState.palette,
+      canvasSize.width,
+      canvasSize.height
+    );
+    try {
+      if (artworkId) {
+        await PixelArtService.updatePixelArt(artworkId, {
+          title: saveData.title || 'Untitled',
+          description: saveData.description || '',
+          pixelData: merged,
+          width: canvasSize.width,
+          height: canvasSize.height,
+          palette: editorState.palette,
+          isDraft: true,
+          isPublic: false,
+        });
+      } else {
+        await PixelArtService.uploadPixelArt(
+          saveData.title || 'Untitled',
+          saveData.description || '',
+          merged,
+          editorState.palette,
+          user,
+          true // isDraft
+        );
+      }
+      setLastAutoSave(Date.now());
+    } catch (e) {
+      // エラーは無視（UIには表示しない）
+    }
+  };
+
+  useEffect(() => {
+    if (!artworkId || !user) return;
+    // 既存作品のロード
+    PixelArtService.getUserArtworks(user.id).then(arts => {
+      const art = arts.find(a => a.id === artworkId);
+      if (art) {
+        setSaveData({ title: art.title, description: art.description || '' });
+        setCanvasSize({ width: art.width, height: art.height });
+        // レイヤー情報を完全復元（canvasは必ず二次元配列に）
+        const layers = art.layers
+          ? art.layers.map(l => ({ ...l, canvas: PixelArtService.reshapeCanvas(l.canvas, art.width, art.height) }))
+          : [{ id: 'layer-1', name: 'レイヤー 1', canvas: art.pixelData, opacity: 1, visible: true }];
+        setEditorState(prev => ({
+          ...prev,
+          canvas: layers[0].canvas,
+          palette: art.palette,
+          layers,
+          currentLayer: 0,
+          history: [layers.map(l => ({ ...l, canvas: l.canvas.map(row => [...row]) }))],
+          historyIndex: 0,
+        }));
+      }
+    });
+  }, [artworkId, user]);
+
+  // エディターステートが変化したら自動保存タイマーをリセット
+  useEffect(() => {
+    if (!user) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      autoSave();
+    }, AUTO_SAVE_INTERVAL);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  }, [editorState, saveData.title, saveData.description, canvasSize, user, artworkId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -267,27 +360,24 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 見出し部分 */}
       <div className="w-full max-w-5xl mx-auto pt-8 pb-2 px-4">
         <div className="flex flex-row items-baseline gap-6 mb-4">
           <h1 className="text-3xl font-bold text-gray-900 mb-0">ドット絵エディター</h1>
           <p className="text-gray-600 text-lg mb-0">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
         </div>
       </div>
-      {/* エディタ本体 */}
       <div className="max-w-full mx-auto px-0 pt-1 pb-8 flex flex-row">
-        {/* Left Sidebar: ツール */}
         <div className="w-64 min-w-[220px] max-w-[320px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 ml-8">
           <Toolbar
             editorState={editorState}
             onStateChange={updateEditorState}
-            onSave={handleSave}
+            onSave={() => handleSave(false)}
+            onSaveDraft={() => handleSave(true)}
             onDownload={handleDownload}
             onClear={handleClear}
             onCanvasSizeChange={handleCanvasSizeChange}
           />
         </div>
-        {/* Main Canvas Area */}
         <div className="flex-1 flex flex-col items-center justify-start">
           <div className="flex items-center justify-center w-full h-full min-h-[800px] flex-col mt-0">
             <Canvas
@@ -298,7 +388,6 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
             />
           </div>
         </div>
-        {/* Right Sidebar: カラーパレット＋レイヤー */}
         <div className="relative" style={{position:'relative', width: '100%', minWidth: '360px', maxWidth: '420px'}}>
           <div
             style={{
@@ -346,11 +435,9 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
               onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
               onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
             />
-            {/* --- レイヤーUI --- */}
             <div className="w-full" style={{marginTop: 16}}>
               <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
                 {editorState.layers.slice().reverse().map((layer, revIdx) => {
-                  // reverseしているので、実際のidxは layers.length - 1 - revIdx
                   const idx = editorState.layers.length - 1 - revIdx;
                   return (
                     <div
@@ -416,7 +503,6 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
                           }}
                         >✕</button>
                       )}
-                      {/* 不透明度スライダー */}
                       <div className="flex items-center gap-1 w-28">
                         <input
                           type="range"
@@ -469,12 +555,11 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Save Dialog */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">作品を投稿</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{isDraftSave ? (artworkId ? '下書き上書き保存' : '下書き保存') : (artworkId ? '作品を上書き投稿' : '作品を投稿')}</h3>
               <button
                 onClick={() => setShowSaveDialog(false)}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded"
@@ -530,12 +615,12 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
                 {isUploading ? (
                   <div className="flex items-center justify-center">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    アップロード中...
+                    保存中...
                   </div>
                 ) : (
                   <>
                     <Upload className="h-4 w-4 inline mr-2" />
-                    投稿する
+                    {isDraftSave ? (artworkId ? '下書き上書き保存' : '下書き保存') : (artworkId ? '上書き投稿' : '投稿する')}
                   </>
                 )}
               </button>
@@ -546,3 +631,5 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
     </div>
   );
 };
+
+export default Editor;
