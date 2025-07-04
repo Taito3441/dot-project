@@ -7,6 +7,7 @@ import { EditorState, Layer } from '../types';
 import { createEmptyCanvas, getDefaultPalette, downloadCanvas, resizeCanvas } from '../utils/pixelArt';
 import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
+import type { ColorPaletteProps } from '../components/PixelEditor/ColorPalette';
 
 interface EditorProps {
   onNavigate: (page: string) => void;
@@ -70,6 +71,8 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
   const [isSliderActive, setIsSliderActive] = useState(false);
+  // カラーパレットの座標を管理
+  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
@@ -296,129 +299,172 @@ export const Editor: React.FC<EditorProps> = ({ onNavigate }) => {
           </div>
         </div>
         {/* Right Sidebar: カラーパレット＋レイヤー */}
-        <div className="w-[23rem] min-w-[320px] max-w-[380px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-0 mr-16">
-          <ColorPalette
-            palette={editorState.palette}
-            currentColor={editorState.currentColor}
-            onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
-            onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
-          />
-          {/* --- レイヤーUI（縦並び, ドラッグ対応） --- */}
-          <div className="w-full mt-4 p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px]">
-            {editorState.layers.slice().reverse().map((layer, revIdx) => {
-              // reverseしているので、実際のidxは layers.length - 1 - revIdx
-              const idx = editorState.layers.length - 1 - revIdx;
-              return (
-                <div
-                  key={layer.id}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
-                    ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'} \
-                    ${dragLayerIdx === idx ? 'opacity-60 border-indigo-400' : ''} \
-                    ${dragOverIdx === idx && dragLayerIdx !== null && dragLayerIdx !== idx ? 'ring-2 ring-indigo-300' : ''}`}
-                  draggable={!isSliderActive}
-                  onDragStart={() => setDragLayerIdx(idx)}
-                  onDragEnd={() => { setDragLayerIdx(null); setDragOverIdx(null); }}
-                  onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
-                  onDragLeave={e => { e.preventDefault(); setDragOverIdx(null); }}
-                  onDrop={e => {
-                    e.preventDefault();
-                    if (dragLayerIdx === null || dragLayerIdx === idx) return;
-                    const newLayers = [...editorState.layers];
-                    const moved = newLayers.splice(dragLayerIdx, 1)[0];
-                    newLayers.splice(idx, 0, moved);
-                    let newCurrent = idx;
-                    if (editorState.currentLayer === dragLayerIdx) newCurrent = idx;
-                    else if (editorState.currentLayer > dragLayerIdx && editorState.currentLayer <= idx) newCurrent = editorState.currentLayer - 1;
-                    else if (editorState.currentLayer < dragLayerIdx && editorState.currentLayer >= idx) newCurrent = editorState.currentLayer + 1;
-                    else newCurrent = editorState.currentLayer;
-                    updateEditorState({ layers: newLayers, currentLayer: newCurrent });
-                    setDragLayerIdx(null); setDragOverIdx(null);
-                  }}
-                  style={{ cursor: 'grab' }}
-                  onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
-                >
-                  <button
-                    className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-colors duration-150 \
-                      ${layer.visible ? 'border-green-400 bg-green-50 text-green-600' : 'border-gray-300 bg-gray-100 text-gray-400'}`}
-                    title={layer.visible ? '表示中' : '非表示'}
-                    onClick={e => {
-                      e.stopPropagation();
-                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, visible: !l.visible } : l);
-                      updateEditorState({ layers: newLayers });
-                    }}
-                  >
-                    {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  </button>
-                  <input
-                    className="w-24 px-1 py-0.5 rounded border border-gray-200 text-sm bg-transparent focus:border-indigo-400"
-                    value={layer.name}
-                    onChange={e => {
-                      e.stopPropagation();
-                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, name: e.target.value } : l);
-                      updateEditorState({ layers: newLayers });
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  />
-                  {editorState.layers.length > 1 && (
-                    <button
-                      className="ml-1 text-red-400 hover:text-red-600"
-                      title="レイヤー削除"
-                      onClick={e => {
-                        e.stopPropagation();
-                        const newLayers = editorState.layers.filter((_, i) => i !== idx);
-                        let newCurrent = editorState.currentLayer;
-                        if (newCurrent >= newLayers.length) newCurrent = newLayers.length - 1;
-                        updateEditorState({ layers: newLayers, currentLayer: newCurrent, canvas: newLayers[newCurrent].canvas });
+        <div className="relative" style={{position:'relative', width: '100%', minWidth: '360px', maxWidth: '420px'}}>
+          <div
+            style={{
+              position: 'absolute',
+              left: palettePos.x,
+              top: palettePos.y,
+              zIndex: 9999,
+              cursor: 'grab',
+              userSelect: 'none',
+              width: 380,
+              minWidth: 360,
+              maxWidth: 420,
+              boxShadow: '0 4px 24px 0 rgba(0,0,0,0.08)',
+              borderRadius: 24,
+              background: '#fff',
+              border: '1px solid #e5e7eb',
+              padding: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 24,
+            }}
+            onMouseDown={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              const dragStartX = e.clientX;
+              const dragStartY = e.clientY;
+              const startPos = { ...palettePos };
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const dx = moveEvent.clientX - dragStartX;
+                const dy = moveEvent.clientY - dragStartY;
+                setPalettePos({ x: startPos.x + dx, y: startPos.y + dy });
+              };
+              const handleMouseUp = (upEvent: MouseEvent) => {
+                if (upEvent.button !== 1) return;
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+              };
+              window.addEventListener('mousemove', handleMouseMove);
+              window.addEventListener('mouseup', handleMouseUp);
+            }}
+          >
+            <ColorPalette
+              palette={editorState.palette}
+              currentColor={editorState.currentColor}
+              onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
+              onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
+            />
+            {/* --- レイヤーUI --- */}
+            <div className="w-full" style={{marginTop: 16}}>
+              <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
+                {editorState.layers.slice().reverse().map((layer, revIdx) => {
+                  // reverseしているので、実際のidxは layers.length - 1 - revIdx
+                  const idx = editorState.layers.length - 1 - revIdx;
+                  return (
+                    <div
+                      key={layer.id}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
+                        ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'} \
+                        ${dragLayerIdx === idx ? 'opacity-60 border-indigo-400' : ''} \
+                        ${dragOverIdx === idx && dragLayerIdx !== null && dragLayerIdx !== idx ? 'ring-2 ring-indigo-300' : ''}`}
+                      draggable={!isSliderActive}
+                      onDragStart={() => setDragLayerIdx(idx)}
+                      onDragEnd={() => { setDragLayerIdx(null); setDragOverIdx(null); }}
+                      onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+                      onDragLeave={e => { e.preventDefault(); setDragOverIdx(null); }}
+                      onDrop={e => {
+                        e.preventDefault();
+                        if (dragLayerIdx === null || dragLayerIdx === idx) return;
+                        const newLayers = [...editorState.layers];
+                        const moved = newLayers.splice(dragLayerIdx, 1)[0];
+                        newLayers.splice(idx, 0, moved);
+                        let newCurrent = idx;
+                        if (editorState.currentLayer === dragLayerIdx) newCurrent = idx;
+                        else if (editorState.currentLayer > dragLayerIdx && editorState.currentLayer <= idx) newCurrent = editorState.currentLayer - 1;
+                        else if (editorState.currentLayer < dragLayerIdx && editorState.currentLayer >= idx) newCurrent = editorState.currentLayer + 1;
+                        else newCurrent = editorState.currentLayer;
+                        updateEditorState({ layers: newLayers, currentLayer: newCurrent });
+                        setDragLayerIdx(null); setDragOverIdx(null);
                       }}
-                    >✕</button>
-                  )}
-                  {/* 不透明度スライダー */}
-                  <div className="flex items-center gap-1 w-28">
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={layer.opacity}
-                      onChange={e => {
-                        const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
-                        updateEditorState({ layers: newLayers });
-                      }}
-                      onPointerDown={e => {
-                        setSliderDragStart({ x: e.clientX, y: e.clientY });
-                        setIsSliderActive(true);
-                        e.stopPropagation();
-                      }}
-                      onPointerMove={e => {
-                        if (!sliderDragStart) return;
-                        const dx = Math.abs(e.clientX - sliderDragStart.x);
-                        const dy = Math.abs(e.clientY - sliderDragStart.y);
-                        if (dx > dy) {
+                      style={{ cursor: 'grab', width: '100%' }}
+                      onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
+                    >
+                      <button
+                        className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-colors duration-150 \
+                          ${layer.visible ? 'border-green-400 bg-green-50 text-green-600' : 'border-gray-300 bg-gray-100 text-gray-400'}`}
+                        title={layer.visible ? '表示中' : '非表示'}
+                        onClick={e => {
                           e.stopPropagation();
-                        }
-                      }}
-                      onPointerUp={() => { setSliderDragStart(null); setIsSliderActive(false); }}
-                      onPointerLeave={() => { setSliderDragStart(null); setIsSliderActive(false); }}
-                      className="w-20 accent-indigo-500"
-                    />
-                    <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
-                  </div>
-                </div>
-              );
-            })}
-            <button
-              className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold"
-              onClick={() => {
-                const newLayer: Layer = {
-                  id: `layer-${Date.now()}`,
-                  name: `レイヤー ${editorState.layers.length + 1}`,
-                  canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
-                  opacity: 1,
-                  visible: true,
-                };
-                updateEditorState({ layers: [...editorState.layers, newLayer], currentLayer: editorState.layers.length });
-              }}
-            >＋レイヤー追加</button>
+                          const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, visible: !l.visible } : l);
+                          updateEditorState({ layers: newLayers });
+                        }}
+                      >
+                        {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
+                      <input
+                        className="w-24 px-1 py-0.5 rounded border border-gray-200 text-sm bg-transparent focus:border-indigo-400"
+                        value={layer.name}
+                        onChange={e => {
+                          e.stopPropagation();
+                          const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, name: e.target.value } : l);
+                          updateEditorState({ layers: newLayers });
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      {editorState.layers.length > 1 && (
+                        <button
+                          className="ml-1 text-red-400 hover:text-red-600"
+                          title="レイヤー削除"
+                          onClick={e => {
+                            e.stopPropagation();
+                            const newLayers = editorState.layers.filter((_, i) => i !== idx);
+                            let newCurrent = editorState.currentLayer;
+                            if (newCurrent >= newLayers.length) newCurrent = newLayers.length - 1;
+                            updateEditorState({ layers: newLayers, currentLayer: newCurrent, canvas: newLayers[newCurrent].canvas });
+                          }}
+                        >✕</button>
+                      )}
+                      {/* 不透明度スライダー */}
+                      <div className="flex items-center gap-1 w-28">
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={layer.opacity}
+                          onChange={e => {
+                            const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
+                            updateEditorState({ layers: newLayers });
+                          }}
+                          onPointerDown={e => {
+                            setSliderDragStart({ x: e.clientX, y: e.clientY });
+                            setIsSliderActive(true);
+                            e.stopPropagation();
+                          }}
+                          onPointerMove={e => {
+                            if (!sliderDragStart) return;
+                            const dx = Math.abs(e.clientX - sliderDragStart.x);
+                            const dy = Math.abs(e.clientY - sliderDragStart.y);
+                            if (dx > dy) {
+                              e.stopPropagation();
+                            }
+                          }}
+                          onPointerUp={() => { setSliderDragStart(null); setIsSliderActive(false); }}
+                          onPointerLeave={() => { setSliderDragStart(null); setIsSliderActive(false); }}
+                          className="w-20 accent-indigo-500"
+                        />
+                        <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <button
+                  className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold w-full"
+                  onClick={() => {
+                    const newLayer: Layer = {
+                      id: `layer-${Date.now()}`,
+                      name: `レイヤー ${editorState.layers.length + 1}`,
+                      canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
+                      opacity: 1,
+                      visible: true,
+                    };
+                    updateEditorState({ layers: [...editorState.layers, newLayer], currentLayer: editorState.layers.length });
+                  }}
+                >＋レイヤー追加</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

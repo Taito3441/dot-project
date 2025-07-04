@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Plus, RotateCcw } from 'lucide-react';
 import { getDefaultPalette } from '../../utils/pixelArt';
 
@@ -9,12 +9,15 @@ interface ColorPaletteProps {
   onPaletteChange: (newPalette: string[]) => void;
 }
 
+export type { ColorPaletteProps };
 export const ColorPalette: React.FC<ColorPaletteProps> = ({
   palette,
   currentColor,
   onColorChange,
   onPaletteChange,
 }) => {
+  const dragState = useRef<{ dragging: boolean; startX: number; startY: number } | null>(null);
+
   const addColor = () => {
     const newColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
     onPaletteChange([...palette, newColor]);
@@ -31,7 +34,10 @@ export const ColorPalette: React.FC<ColorPaletteProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-6 min-w-[260px] w-80">
+    <div
+      className="bg-white rounded-2xl border border-gray-200 p-6 min-w-[260px] w-80"
+      style={{ cursor: 'inherit' }}
+    >
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-base font-semibold text-gray-900">Color Palette</h3>
         <div className="flex space-x-3">
