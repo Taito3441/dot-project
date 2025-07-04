@@ -492,6 +492,40 @@ export const Canvas: React.FC<CanvasProps> = ({
           onMouseUp={isPanning ? undefined : handleMouseUp}
           onMouseLeave={isPanning ? undefined : handleMouseUp}
         />
+        {/* --- キャンバス外側の目印（メモリ） --- */}
+        <svg
+          className="absolute left-0 top-0 pointer-events-none"
+          width={canvasWidth}
+          height={canvasHeight}
+          style={{ zIndex: 30, left: 0, top: 0 }}
+        >
+          {(() => {
+            const marks: JSX.Element[] = [];
+            const markLen = Math.max(6, pixelSize * 0.5); // メモリの長さ
+            const positions = [0.25, 0.5, 0.75]; // 四等分と中央
+            // 上辺
+            positions.forEach(p => {
+              const x = canvasWidth * p;
+              marks.push(<line key={`top-${p}`} x1={x} y1={0} x2={x} y2={markLen} stroke="#2196f3" strokeWidth={2} />);
+            });
+            // 下辺
+            positions.forEach(p => {
+              const x = canvasWidth * p;
+              marks.push(<line key={`bottom-${p}`} x1={x} y1={canvasHeight} x2={x} y2={canvasHeight - markLen} stroke="#2196f3" strokeWidth={2} />);
+            });
+            // 左辺
+            positions.forEach(p => {
+              const y = canvasHeight * p;
+              marks.push(<line key={`left-${p}`} x1={0} y1={y} x2={markLen} y2={y} stroke="#2196f3" strokeWidth={2} />);
+            });
+            // 右辺
+            positions.forEach(p => {
+              const y = canvasHeight * p;
+              marks.push(<line key={`right-${p}`} x1={canvasWidth} y1={y} x2={canvasWidth - markLen} y2={y} stroke="#2196f3" strokeWidth={2} />);
+            });
+            return marks;
+          })()}
+        </svg>
         {/* 全体移動ツールのプレビュー（移動中は半透明で表示） */}
         {editorState.tool === 'move' && isMovingCanvas && (moveOffset.x !== 0 || moveOffset.y !== 0) && (
           <canvas
