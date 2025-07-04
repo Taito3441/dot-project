@@ -160,6 +160,8 @@ const Editor: React.FC = () => {
           isDraft: isDraftSave,
           isPublic: !isDraftSave,
           layers: editorState.layers.map(l => ({ ...l, canvas: l.canvas.flat() })) as any,
+          canvas: merged,
+          user,
         });
         setShowSaveDialog(false);
         setSaveData({ title: '', description: '' });
@@ -246,6 +248,8 @@ const Editor: React.FC = () => {
           palette: editorState.palette,
           isDraft: true,
           isPublic: false,
+          canvas: merged,
+          user,
         });
       } else {
         await PixelArtService.uploadPixelArt(

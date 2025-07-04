@@ -320,7 +320,7 @@ export class PixelArtService {
 
   static async updatePixelArt(
     artworkId: string,
-    data: Partial<Omit<FirebasePixelArt, 'id' | 'createdAt' | 'authorId' | 'authorName' | 'authorEmail' | 'authorNickname'>> & { updatedAt?: any; isDraft?: boolean; isPublic?: boolean; layers?: any[] }
+    data: Partial<Omit<FirebasePixelArt, 'id' | 'createdAt' | 'authorId' | 'authorName' | 'authorEmail' | 'authorNickname'>> & { updatedAt?: any; isDraft?: boolean; isPublic?: boolean; layers?: any[]; canvas?: number[][]; palette?: string[]; user?: User }
   ): Promise<void> {
     try {
       const artworkRef = doc(db, this.COLLECTION_NAME, artworkId);
@@ -336,7 +336,15 @@ export class PixelArtService {
             : []
         }));
       }
-      console.log('updatePixelArt safeLayers', safeLayers);
+      // 新しい画像を生成・アップロードし、imageUrlを上書き
+      let newImageUrl = data.imageUrl;
+      if (data.canvas && data.palette && data.user) {
+        const imageData = canvasToImageData(data.canvas, data.palette, 10);
+        const blob = dataURLtoBlob(imageData);
+        const imageRef = ref(storage, `pixel-arts/${Date.now()}_${data.user.id}.png`);
+        const uploadResult = await uploadBytes(imageRef, blob);
+        newImageUrl = await getDownloadURL(uploadResult.ref);
+      }
       // pixelDataもArray.fromで通常配列に変換（多次元配列ならflat）
       let safePixelData: any = data.pixelData;
       if (Array.isArray(safePixelData)) {
@@ -357,8 +365,11 @@ export class PixelArtService {
           canvas: Array.isArray(l.canvas) ? Array.from(l.canvas as any) : l.canvas
         }));
       }
+      // updateDocにFirestoreに保存しないフィールド（canvas, user）は含めない
+      const { canvas, user, ...firestoreData } = data;
       const updateData: any = {
-        ...data,
+        ...firestoreData,
+        imageUrl: newImageUrl,
         pixelData: safePixelData,
         palette: safePalette,
         updatedAt: serverTimestamp(),
