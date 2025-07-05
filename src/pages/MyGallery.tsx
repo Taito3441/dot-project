@@ -58,7 +58,14 @@ const MyGallery: React.FC = () => {
                 className="p-4 border rounded cursor-pointer hover:bg-gray-100 flex items-center justify-between"
                 onClick={() => handleEdit(art.id!)}
               >
-                <span>{art.title}</span>
+                <div className="flex items-center gap-4">
+                  <img
+                    src={art.imageUrl || 'https://via.placeholder.com/48x48?text=No+Image'}
+                    alt={art.title}
+                    className="w-12 h-12 object-cover rounded border"
+                  />
+                  <span>{art.title}</span>
+                </div>
                 <span className="text-xs text-yellow-600 ml-2">下書き</span>
               </div>
             ))}
@@ -72,7 +79,14 @@ const MyGallery: React.FC = () => {
                 className="p-4 border rounded cursor-pointer hover:bg-gray-100 flex items-center justify-between"
                 onClick={() => handleEdit(art.id!)}
               >
-                <span>{art.title}</span>
+                <div className="flex items-center gap-4">
+                  <img
+                    src={art.imageUrl || 'https://via.placeholder.com/48x48?text=No+Image'}
+                    alt={art.title}
+                    className="w-12 h-12 object-cover rounded border"
+                  />
+                  <span>{art.title}</span>
+                </div>
               </div>
             ))}
           </div>
