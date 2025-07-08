@@ -39,6 +39,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [isMovingCanvas, setIsMovingCanvas] = useState(false);
   const [moveStart, setMoveStart] = useState<{ x: number; y: number } | null>(null);
   const [moveOffset, setMoveOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -55,6 +56,76 @@ export const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     drawCanvas();
   }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid, editorState.backgroundPattern]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // スナップ関数: 水平・垂直・45度
+  const getSnappedLineEnd = (start: { x: number, y: number }, end: { x: number, y: number }) => {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    if (dx === 0 && dy === 0) return end;
+    const angle = Math.atan2(dy, dx);
+    // 0:水平, π/4:45度, π/2:垂直, -π/4:-45度
+    const directions = [0, Math.PI / 4, Math.PI / 2, -Math.PI / 4, -Math.PI / 2, -3 * Math.PI / 4, Math.PI, 3 * Math.PI / 4];
+    let minDiff = Infinity;
+    let snappedAngle = 0;
+    for (const dir of directions) {
+      let diff = Math.abs(angle - dir);
+      if (diff > Math.PI) diff = 2 * Math.PI - diff;
+      if (diff < minDiff) {
+        minDiff = diff;
+        snappedAngle = dir;
+      }
+    }
+    // 距離
+    const len = Math.round(Math.sqrt(dx * dx + dy * dy));
+    // 方向ごとにx,yの増分を決定
+    let snapDx = 0, snapDy = 0;
+    if (Math.abs(snappedAngle) < 0.0001 || Math.abs(Math.abs(snappedAngle) - Math.PI) < 0.0001) {
+      // 水平
+      snapDx = dx > 0 ? len : -len;
+      snapDy = 0;
+    } else if (Math.abs(Math.abs(snappedAngle) - Math.PI / 2) < 0.0001) {
+      // 垂直
+      snapDx = 0;
+      snapDy = dy > 0 ? len : -len;
+    } else {
+      // 45度
+      snapDx = dx > 0 ? len : -len;
+      snapDy = dy > 0 ? len : -len;
+      // 45度方向に合わせて長さを調整
+      const minLen = Math.min(Math.abs(dx), Math.abs(dy));
+      snapDx = dx > 0 ? minLen : -minLen;
+      snapDy = dy > 0 ? minLen : -minLen;
+    }
+    return { x: start.x + snapDx, y: start.y + snapDy };
+  };
+
+  // 正方形スナップ関数
+  const getSnappedRectEnd = (start: { x: number, y: number }, end: { x: number, y: number }) => {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const size = Math.max(absDx, absDy);
+    return {
+      x: start.x + (dx >= 0 ? size : -size),
+      y: start.y + (dy >= 0 ? size : -size),
+    };
+  };
 
   const hexToRgba = (hex: string, alpha: number = 1) => {
     // #RRGGBB or #RGB
@@ -230,8 +301,11 @@ export const Canvas: React.FC<CanvasProps> = ({
         setLineStart(coords); // 1回目クリックで始点セット
         setLinePreview(null);
       } else {
-        // 2回目クリックで直線描画
-        const points = getLinePoints(lineStart, coords);
+        let endCoords = coords;
+        if (isShiftPressed) {
+          endCoords = getSnappedLineEnd(lineStart, coords);
+        }
+        const points = getLinePoints(lineStart, endCoords);
         for (const point of points) {
           drawPixelDirect(point.x, point.y);
         }
@@ -285,11 +359,14 @@ export const Canvas: React.FC<CanvasProps> = ({
         setRectStart(coords); // 1回目クリックで始点セット
         setRectPreview(null);
       } else {
-        // 2回目クリックで四角形描画
-        const x1 = Math.min(rectStart.x, coords.x);
-        const x2 = Math.max(rectStart.x, coords.x);
-        const y1 = Math.min(rectStart.y, coords.y);
-        const y2 = Math.max(rectStart.y, coords.y);
+        let endCoords = coords;
+        if (isShiftPressed) {
+          endCoords = getSnappedRectEnd(rectStart, coords);
+        }
+        const x1 = Math.min(rectStart.x, endCoords.x);
+        const x2 = Math.max(rectStart.x, endCoords.x);
+        const y1 = Math.min(rectStart.y, endCoords.y);
+        const y2 = Math.max(rectStart.y, endCoords.y);
         for (let x = x1; x <= x2; x++) {
           drawPixelDirect(x, y1);
           drawPixelDirect(x, y2);
@@ -367,12 +444,24 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (isPanning) return; // パン中は描画操作を無効化
     if (editorState.tool === 'line' && lineStart) {
       const coords = getPixelCoordinates(event);
-      if (coords) setLinePreview(coords);
+      if (coords) {
+        let previewCoords = coords;
+        if (isShiftPressed) {
+          previewCoords = getSnappedLineEnd(lineStart, coords);
+        }
+        setLinePreview(previewCoords);
+      }
       return;
     }
     if (editorState.tool === 'rect' && rectStart) {
       const coords = getPixelCoordinates(event);
-      if (coords) setRectPreview(coords);
+      if (coords) {
+        let previewCoords = coords;
+        if (isShiftPressed) {
+          previewCoords = getSnappedRectEnd(rectStart, coords);
+        }
+        setRectPreview(previewCoords);
+      }
       return;
     }
     if (editorState.tool === 'ellipse' && ellipseStart) {
@@ -588,8 +677,8 @@ export const Canvas: React.FC<CanvasProps> = ({
             <rect
               x={Math.min(rectStart.x, rectPreview.x) * pixelSize}
               y={Math.min(rectStart.y, rectPreview.y) * pixelSize}
-              width={Math.abs(rectStart.x - rectPreview.x + 1) * pixelSize}
-              height={Math.abs(rectStart.y - rectPreview.y + 1) * pixelSize}
+              width={(Math.abs(rectStart.x - rectPreview.x) + 1) * pixelSize}
+              height={(Math.abs(rectStart.y - rectPreview.y) + 1) * pixelSize}
               fill="none"
               stroke={editorState.palette[editorState.currentColor - 1] || '#000'}
               strokeWidth={Math.max(2, pixelSize * 0.2)}
