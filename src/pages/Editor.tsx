@@ -76,6 +76,7 @@ const Editor: React.FC = () => {
   const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
+  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete'>(null);
 
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
@@ -150,6 +151,9 @@ const Editor: React.FC = () => {
       );
       if (artworkId) {
         // 既存作品の上書き保存
+        const safeLayers = editorState.layers
+          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+          .map(l => ({ ...l, canvas: l.canvas.flat() }));
         await PixelArtService.updatePixelArt(artworkId, {
           title: saveData.title || 'Untitled',
           description: saveData.description || '',
@@ -159,7 +163,7 @@ const Editor: React.FC = () => {
           palette: editorState.palette,
           isDraft: isDraftSave,
           isPublic: !isDraftSave,
-          layers: editorState.layers.map(l => ({ ...l, canvas: l.canvas.flat() })) as any,
+          layers: safeLayers as any,
           canvas: merged,
           user,
         });
@@ -168,6 +172,9 @@ const Editor: React.FC = () => {
         alert(isDraftSave ? '下書き保存成功しました！' : '作品を投稿しました！');
       } else {
         // 新規作成
+        const safeLayers = editorState.layers
+          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+          .map(l => ({ ...l, canvas: l.canvas.flat() }));
         await PixelArtService.uploadPixelArt(
           saveData.title || 'Untitled',
           saveData.description || '',
@@ -175,7 +182,7 @@ const Editor: React.FC = () => {
           editorState.palette,
           user,
           isDraftSave,
-          editorState.layers.map(l => ({ ...l, canvas: l.canvas.flat() })) as any
+          safeLayers as any
         );
         setShowSaveDialog(false);
         setSaveData({ title: '', description: '' });
@@ -239,6 +246,9 @@ const Editor: React.FC = () => {
     );
     try {
       if (artworkId) {
+        const safeLayers = editorState.layers
+          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+          .map(l => ({ ...l, canvas: l.canvas.flat() }));
         await PixelArtService.updatePixelArt(artworkId, {
           title: saveData.title || 'Untitled',
           description: saveData.description || '',
@@ -250,15 +260,20 @@ const Editor: React.FC = () => {
           isPublic: false,
           canvas: merged,
           user,
+          layers: safeLayers as any,
         });
       } else {
+        const safeLayers = editorState.layers
+          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+          .map(l => ({ ...l, canvas: l.canvas.flat() }));
         await PixelArtService.uploadPixelArt(
           saveData.title || 'Untitled',
           saveData.description || '',
           merged,
           editorState.palette,
           user,
-          true // isDraft
+          true, // isDraft
+          safeLayers as any
         );
       }
       setLastAutoSave(Date.now());
@@ -380,6 +395,7 @@ const Editor: React.FC = () => {
             onDownload={handleDownload}
             onClear={handleClear}
             onCanvasSizeChange={handleCanvasSizeChange}
+            onLassoMenuAction={setLassoMenuAction}
           />
         </div>
         <div className="flex-1 flex flex-col items-center justify-start">
@@ -389,6 +405,8 @@ const Editor: React.FC = () => {
               onStateChange={updateEditorState}
               width={canvasSize.width}
               height={canvasSize.height}
+              lassoMenuAction={lassoMenuAction}
+              setLassoMenuAction={setLassoMenuAction}
             />
           </div>
         </div>

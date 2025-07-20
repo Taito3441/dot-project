@@ -11,7 +11,7 @@ export const MyPage: React.FC<MyPageProps> = ({ onNavigate }) => {
   const { user, isAuthenticated } = useAuth();
 
   if (!isAuthenticated || !user) {
-    onNavigate('auth');
+    onNavigate('/');
     return null;
   }
 

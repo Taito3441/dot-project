@@ -1,12 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { EditorState } from '../../types';
 import { floodFill } from '../../utils/pixelArt';
+import { createEmptyCanvas } from '../../utils/pixelArt';
 
 interface CanvasProps {
   editorState: EditorState;
   onStateChange: (newState: Partial<EditorState>) => void;
   width: number;
   height: number;
+  lassoMenuAction?: 'copy' | 'delete' | null;
+  setLassoMenuAction?: (action: null) => void;
 }
 
 type Layer = {
@@ -22,6 +25,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   onStateChange,
   width,
   height,
+  lassoMenuAction,
+  setLassoMenuAction,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -40,6 +45,42 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [moveStart, setMoveStart] = useState<{ x: number; y: number } | null>(null);
   const [moveOffset, setMoveOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isShiftPressed, setIsShiftPressed] = useState(false);
+  // --- 投げ縄用 state ---
+  const [lassoSelections, setLassoSelections] = useState<{ x: number; y: number }[][]>(editorState.lassoSelections || []);
+  const currentLassoRef = useRef<{ x: number; y: number }[]>([]);
+  const isLassoingRef = useRef(false);
+  const lastLassoPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [isLassoing, setIsLassoing] = useState(false);
+  const [lassoMode, setLassoMode] = useState<'idle' | 'copying'>('idle');
+  const [lassoDragStart, setLassoDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [lassoDragOffset, setLassoDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // --- プレビュー用キャッシュ ---
+  const lassoPixelCache = useRef<{ x: number; y: number; colorIndex: number }[]>([]);
+
+  // 移動・コピー開始時にキャッシュを作成
+  useEffect(() => {
+    if ((lassoMode === 'copying') && lassoSelections.length > 0) {
+      const layer = editorState.layers[editorState.currentLayer];
+      const cache: { x: number; y: number; colorIndex: number }[] = [];
+      for (const region of lassoSelections) {
+        for (const { x, y } of region) {
+          if (x >= 0 && x < layer.canvas[0].length && y >= 0 && y < layer.canvas.length) {
+            cache.push({ x, y, colorIndex: layer.canvas[y][x] });
+          }
+        }
+      }
+      lassoPixelCache.current = cache;
+    } else {
+      lassoPixelCache.current = [];
+    }
+  }, [lassoMode, lassoSelections, editorState.layers, editorState.currentLayer]);
+
+  // lassoModeの変更時に親に伝える
+  useEffect(() => {
+    onStateChange({ lassoMode });
+    // eslint-disable-next-line
+  }, [lassoMode]);
 
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
@@ -58,6 +99,10 @@ export const Canvas: React.FC<CanvasProps> = ({
   }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid, editorState.backgroundPattern]);
 
   useEffect(() => {
+    currentLassoRef.current = currentLassoRef.current;
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') setIsShiftPressed(true);
     };
@@ -71,6 +116,77 @@ export const Canvas: React.FC<CanvasProps> = ({
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
+
+  // --- キーボードショートカット ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Delete/Backspaceで選択範囲消去
+      if ((e.key === 'Delete' || e.key === 'Backspace') && editorState.tool === 'lasso' && lassoSelections.length > 0) {
+        const newLayers = editorState.layers.map((l, i) => {
+          if (i !== editorState.currentLayer) return l;
+          const canvas = l.canvas.map(row => [...row]);
+          for (const region of lassoSelections) {
+            for (const { x, y } of region) {
+              if (x >= 0 && x < canvas[0].length && y >= 0 && y < canvas.length) {
+                canvas[y][x] = 0;
+              }
+            }
+          }
+          return { ...l, canvas };
+        });
+        onStateChange({ layers: newLayers });
+        setLassoSelections([]);
+        currentLassoRef.current = [];
+        setIsLassoing(false);
+        setLassoMode('idle');
+        setLassoDragStart(null);
+        setLassoDragOffset({ x: 0, y: 0 });
+      }
+      // Escで選択解除
+      if (e.key === 'Escape' && editorState.tool === 'lasso') {
+        setLassoSelections([]);
+        currentLassoRef.current = [];
+        setIsLassoing(false);
+        setLassoMode('idle');
+        setLassoDragStart(null);
+        setLassoDragOffset({ x: 0, y: 0 });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editorState.tool, lassoSelections, editorState.layers]);
+
+  // 他ツール選択時の解除
+  useEffect(() => {
+    if (editorState.tool !== 'lasso') {
+      setLassoSelections([]);
+      currentLassoRef.current = [];
+      setIsLassoing(false);
+      setLassoMode('idle');
+      setLassoDragStart(null);
+      setLassoDragOffset({ x: 0, y: 0 });
+      lastLassoPointRef.current = null;
+      isLassoingRef.current = false;
+      lassoPixelCache.current = [];
+      drawCanvas(); // 状態リセット直後に必ず再描画
+    }
+  }, [editorState.tool]);
+
+  // --- プルダウンメニューからの操作 ---
+  useEffect(() => {
+    if (!lassoMenuAction) return;
+    if (lassoMenuAction === 'copy') {
+      if (lassoSelections.length > 0) {
+        setLassoMode('copying');
+        // コピー開始時、基準点を未セット状態に
+        setLassoDragStart(null);
+        setLassoDragOffset({ x: 0, y: 0 });
+      } else {
+        setLassoMode('idle');
+      }
+    }
+    setLassoMenuAction && setLassoMenuAction(null);
+  }, [lassoMenuAction, lassoSelections]);
 
   // スナップ関数: 水平・垂直・45度
   const getSnappedLineEnd = (start: { x: number, y: number }, end: { x: number, y: number }) => {
@@ -116,6 +232,19 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // 正方形スナップ関数
   const getSnappedRectEnd = (start: { x: number, y: number }, end: { x: number, y: number }) => {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const size = Math.max(absDx, absDy);
+    return {
+      x: start.x + (dx >= 0 ? size : -size),
+      y: start.y + (dy >= 0 ? size : -size),
+    };
+  };
+
+  // 正円スナップ関数
+  const getSnappedEllipseEnd = (start: { x: number, y: number }, end: { x: number, y: number }) => {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const absDx = Math.abs(dx);
@@ -216,6 +345,59 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
     }
+    // --- 投げ縄選択範囲の描画 ---
+    if (editorState.tool === 'lasso' && (lassoSelections.length > 0 || currentLassoRef.current.length > 0)) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d')!;
+        ctx.save();
+        if ((lassoMode === 'copying') && lassoPixelCache.current.length > 0) {
+          // プレビュー: キャッシュしたピクセルのみ描画
+          for (const { x, y, colorIndex } of lassoPixelCache.current) {
+            // コピー中は元の位置を消す
+            ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+            // プレビュー先
+            const nx = x + lassoDragOffset.x;
+            const ny = y + lassoDragOffset.y;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              if (colorIndex > 0) {
+                const hex = editorState.palette[colorIndex - 1];
+                ctx.globalAlpha = 0.7;
+                ctx.fillStyle = hex;
+                ctx.fillRect(nx * pixelSize + 1, ny * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+                ctx.globalAlpha = 1.0;
+              }
+              // 透明でも必ず点線枠を描画
+              ctx.strokeStyle = '#22c55e';
+              ctx.setLineDash([2, 2]);
+              ctx.lineWidth = 4;
+              ctx.strokeRect(nx * pixelSize + 1, ny * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+              ctx.setLineDash([]);
+            }
+          }
+        } else {
+          // 通常の投げ縄選択範囲
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = '#fffbe6';
+          for (const region of [...lassoSelections, currentLassoRef.current]) {
+            for (const { x, y } of region) {
+              ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+            }
+          }
+          ctx.globalAlpha = 1.0;
+          ctx.strokeStyle = '#f59e42';
+          ctx.setLineDash([2, 2]);
+          ctx.lineWidth = 2;
+          for (const region of [...lassoSelections, currentLassoRef.current]) {
+            for (const { x, y } of region) {
+              ctx.strokeRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+            }
+          }
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+    }
   };
 
   const getPixelCoordinates = (event: React.MouseEvent): { x: number; y: number } | null => {
@@ -237,7 +419,9 @@ export const Canvas: React.FC<CanvasProps> = ({
     // layers全体をディープコピーして保存
     const layersCopy = editorState.layers.map(layer => ({
       ...layer,
-      canvas: layer.canvas.map(row => [...row]),
+      canvas: Array.isArray(layer.canvas) && Array.isArray(layer.canvas[0])
+        ? layer.canvas.map(row => [...row])
+        : createEmptyCanvas(width, height),
     }));
     newHistory.push(layersCopy);
     onStateChange({
@@ -255,11 +439,99 @@ export const Canvas: React.FC<CanvasProps> = ({
     canvasDataRef.current[y][x] = colorIndex;
   };
 
+  // --- ドキュメント全体でmousemove/upを監視する投げ縄 ---
+  const handleLassoMouseMove = (event: MouseEvent) => {
+    if (!isLassoingRef.current) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.floor((event.clientX - rect.left) / pixelSize);
+    const y = Math.floor((event.clientY - rect.top) / pixelSize);
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const coords = { x, y };
+    if (!lastLassoPointRef.current) {
+      lastLassoPointRef.current = coords;
+    }
+    const last = lastLassoPointRef.current;
+    const points: { x: number; y: number }[] = [];
+    const dx = coords.x - last.x;
+    const dy = coords.y - last.y;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    for (let i = 1; i <= steps; i++) {
+      const nx = last.x + Math.round((dx * i) / steps);
+      const ny = last.y + Math.round((dy * i) / steps);
+      points.push({ x: nx, y: ny });
+    }
+    // 既存のcurrentLassoRefに新しい点を追加
+    const prev = currentLassoRef.current;
+    const newPoints = points.filter(
+      (p) => !prev.some((q) => q.x === p.x && q.y === p.y)
+    );
+    currentLassoRef.current = [...prev, ...newPoints];
+    lastLassoPointRef.current = coords;
+    window.requestAnimationFrame(drawCanvas);
+  };
+
+  const handleLassoMouseUp = () => {
+    setIsLassoing(false);
+    isLassoingRef.current = false;
+    lastLassoPointRef.current = null;
+    window.removeEventListener('mousemove', handleLassoMouseMove);
+    window.removeEventListener('mouseup', handleLassoMouseUp);
+    if (editorState.tool === 'lasso') {
+      if (currentLassoRef.current.length > 0) {
+        setLassoSelections((prev) => [...prev, [...currentLassoRef.current]]);
+        // currentLassoRef.currentはここでクリアしない（次のmousedownまで保持）
+        window.requestAnimationFrame(drawCanvas);
+      }
+    }
+  };
+
+  // 1. 移動モード時、選択範囲内クリックでドラッグ開始
+  const isInLassoSelection = (coords: { x: number; y: number }) => {
+    for (const region of lassoSelections) {
+      for (const { x, y } of region) {
+        if (coords.x === x + lassoDragOffset.x && coords.y === y + lassoDragOffset.y) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   const handleMouseDown = (event: React.MouseEvent) => {
     if (event.button === 1) return; // ホイールボタンはツール操作を一切無効化
     if (isPanning) return; // パン中は描画操作を無効化
     const coords = getPixelCoordinates(event);
     if (!coords) return;
+
+    // --- 投げ縄ツール ---
+    if (editorState.tool === 'lasso') {
+      // コピー中で選択範囲があり、基準点が未セットなら、クリック位置を基準点にしてドラッグ開始
+      if (lassoMode === 'copying' && lassoSelections.length > 0 && !lassoDragStart) {
+        setLassoDragStart(coords);
+        setLassoDragOffset({ x: 0, y: 0 });
+        setIsLassoing(true);
+        return;
+      }
+      // コピー中で選択範囲があり、基準点がセット済みなら、ドラッグで移動
+      if (lassoMode === 'copying' && lassoSelections.length > 0 && lassoDragStart) {
+        setIsLassoing(true);
+        return;
+      }
+      // 通常の投げ縄範囲追加はidle時のみ許可
+      if (lassoMode === 'idle') {
+        setIsLassoing(true);
+        isLassoingRef.current = true;
+        currentLassoRef.current = [{ x: coords.x, y: coords.y }];
+        lastLassoPointRef.current = { x: coords.x, y: coords.y };
+        window.addEventListener('mousemove', handleLassoMouseMove);
+        window.addEventListener('mouseup', handleLassoMouseUp);
+        window.requestAnimationFrame(drawCanvas);
+      }
+      return;
+    }
+
+    // --- ここから下は投げ縄以外のツールのみ ---
 
     // 全体移動ツール
     if (editorState.tool === 'move') {
@@ -392,8 +664,12 @@ export const Canvas: React.FC<CanvasProps> = ({
         setEllipseStart(coords); // 1回目クリックで始点セット
         setEllipsePreview(null);
       } else {
+        let endCoords = coords;
+        if (isShiftPressed) {
+          endCoords = getSnappedEllipseEnd(ellipseStart, coords);
+        }
         // 2回目クリックで楕円描画
-        drawEllipseOnCanvas(ellipseStart, coords);
+        drawEllipseOnCanvas(ellipseStart, endCoords);
         setEllipseStart(null);
         setEllipsePreview(null);
         // React状態に反映
@@ -441,7 +717,16 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
+    console.log('mousemove', isLassoingRef.current, editorState.tool);
     if (isPanning) return; // パン中は描画操作を無効化
+    // コピー中でドラッグ中は、マウス位置に追従してプレビュー
+    if (editorState.tool === 'lasso' && lassoMode === 'copying' && lassoSelections.length > 0 && lassoDragStart && isLassoing) {
+      const coords = getPixelCoordinates(event);
+      if (!coords) return;
+      setLassoDragOffset({ x: coords.x - lassoDragStart.x, y: coords.y - lassoDragStart.y });
+      window.requestAnimationFrame(drawCanvas);
+      return;
+    }
     if (editorState.tool === 'line' && lineStart) {
       const coords = getPixelCoordinates(event);
       if (coords) {
@@ -466,7 +751,13 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     if (editorState.tool === 'ellipse' && ellipseStart) {
       const coords = getPixelCoordinates(event);
-      if (coords) setEllipsePreview(coords);
+      if (coords) {
+        let previewCoords = coords;
+        if (isShiftPressed) {
+          previewCoords = getSnappedEllipseEnd(ellipseStart, coords);
+        }
+        setEllipsePreview(previewCoords);
+      }
       return;
     }
     if (editorState.tool === 'move' && isMovingCanvas && moveStart) {
@@ -500,11 +791,85 @@ export const Canvas: React.FC<CanvasProps> = ({
       onStateChange({ layers: newLayers });
     }
     setDragStart(coords);
+
+    // --- 投げ縄ツール ---
+    if (editorState.tool === 'lasso' && isLassoingRef.current) {
+      const coords = getPixelCoordinates(event);
+      if (!coords) return;
+      if (!lastLassoPointRef.current) {
+        lastLassoPointRef.current = coords;
+      }
+      const last = lastLassoPointRef.current;
+      // 線分補間
+      const points: { x: number; y: number }[] = [];
+      const dx = coords.x - last.x;
+      const dy = coords.y - last.y;
+      const steps = Math.max(Math.abs(dx), Math.abs(dy));
+      for (let i = 1; i <= steps; i++) {
+        const nx = last.x + Math.round((dx * i) / steps);
+        const ny = last.y + Math.round((dy * i) / steps);
+        points.push({ x: nx, y: ny });
+      }
+      // 既存のcurrentLassoRefに新しい点を追加
+      const prev = currentLassoRef.current;
+      const newPoints = points.filter(
+        (p) => !prev.some((q) => q.x === p.x && q.y === p.y)
+      );
+      currentLassoRef.current = [...prev, ...newPoints];
+      lastLassoPointRef.current = coords;
+      window.requestAnimationFrame(drawCanvas);
+      return;
+    } else if (editorState.tool === 'lasso' && lassoMode === 'copying' && lassoDragStart) {
+      const coords = getPixelCoordinates(event);
+      if (!coords) return;
+      setLassoDragOffset({ x: coords.x - lassoDragStart.x, y: coords.y - lassoDragStart.y });
+    }
+    // 移動モード時: ドラッグ中のみオフセットを更新
+    if (editorState.tool === 'lasso' && lassoMode === 'copying' && lassoDragStart && isLassoing) {
+      const coords = getPixelCoordinates(event);
+      if (!coords) return;
+      setLassoDragOffset({ x: coords.x - lassoDragStart.x, y: coords.y - lassoDragStart.y });
+    }
   };
 
+  // --- コピー確定処理 ---
+  const confirmLassoCopy = () => {
+    if (lassoMode === 'copying' && lassoSelections.length > 0) {
+      const offset = { ...lassoDragOffset };
+      const newLayers = editorState.layers.map((l, i) => {
+        if (i !== editorState.currentLayer) return l;
+        const canvas = l.canvas.map(row => [...row]);
+        // コピー: 新しい位置に色を上書き
+        for (const region of lassoSelections) {
+          for (const { x, y } of region) {
+            const nx = x + offset.x;
+            const ny = y + offset.y;
+            if (nx >= 0 && nx < canvas[0].length && ny >= 0 && ny < canvas.length) {
+              canvas[ny][nx] = l.canvas[y][x];
+            }
+          }
+        }
+        return { ...l, canvas };
+      });
+      onStateChange({ layers: newLayers });
+      // 選択範囲を新しい位置だけに更新（元の位置は消す）
+      const newSelections = lassoSelections.map(region => region.map(({ x, y }) => ({ x: x + offset.x, y: y + offset.y })));
+      setLassoSelections(newSelections);
+      currentLassoRef.current = [];
+      setLassoMode('idle');
+      setLassoDragStart(null);
+      setLassoDragOffset({ x: 0, y: 0 });
+    }
+  };
+
+  // handleMouseUp: 確定操作
   const handleMouseUp = () => {
-    if (isPanning) return; // パン中は描画操作を無効化
-    // 全体移動ツールはここでは何もしない
+    if (isPanning) return;
+    setIsLassoing(false);
+    isLassoingRef.current = false;
+    lastLassoPointRef.current = null;
+    window.removeEventListener('mousemove', handleLassoMouseMove);
+    window.removeEventListener('mouseup', handleLassoMouseUp);
     setIsDrawing(false);
     setDragStart(null);
     // React状態に反映
@@ -512,8 +877,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
     );
     onStateChange({ layers: newLayers });
-    // ここで履歴を記録
     saveToHistory();
+    // コピー確定はEnter/ダブルクリックのみ
   };
 
   // パン開始
@@ -561,6 +926,22 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  // ダブルクリックでコピー確定
+  const handleDoubleClick = () => {
+    confirmLassoCopy();
+  };
+
+  // Enterキーでコピー確定
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && lassoMode === 'copying' && lassoSelections.length > 0) {
+        confirmLassoCopy();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lassoMode, lassoSelections, lassoDragOffset, editorState.layers, editorState.currentLayer]);
+
   return (
     <div
       className="flex items-center justify-center p-0 bg-transparent border-none select-none"
@@ -582,7 +963,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           onMouseDown={isPanning ? undefined : handleMouseDown}
           onMouseMove={isPanning ? undefined : handleMouseMove}
           onMouseUp={isPanning ? undefined : handleMouseUp}
-          onMouseLeave={isPanning ? undefined : handleMouseUp}
+          onMouseLeave={isPanning ? undefined : () => { setIsLassoing(false); isLassoingRef.current = false; lastLassoPointRef.current = null; handleMouseUp(); }}
+          onDoubleClick={handleDoubleClick}
         />
         {/* --- キャンバス外側の目印（メモリ） --- */}
         <svg

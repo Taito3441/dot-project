@@ -44,7 +44,7 @@ export interface EditorState {
   canvas: number[][];
   palette: string[];
   currentColor: number;
-  tool: 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'move';
+  tool: 'brush' | 'eraser' | 'eyedropper' | 'fill' | 'line' | 'rect' | 'ellipse' | 'move' | 'lasso';
   zoom: number;
   history: Layer[][];
   historyIndex: number;
@@ -52,6 +52,12 @@ export interface EditorState {
   currentLayer: number;
   showGrid: boolean; // マス目表示のオンオフ
   backgroundPattern: 'light' | 'dark'; // 背景パターン
+  // 投げ縄選択用の状態
+  lassoSelections?: { x: number; y: number }[][]; // 複数範囲対応
+  lassoActive?: boolean;
+  lassoMode?: 'idle' | 'selecting' | 'moving' | 'copying';
+  lassoMenuOpen?: boolean;
+  lassoMirror?: boolean; // 左右反転中か
 }
 
 export interface FirebasePixelArt {

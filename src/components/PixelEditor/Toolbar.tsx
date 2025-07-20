@@ -1,5 +1,5 @@
-import React from 'react';
-import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw, Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw, Upload, Scissors } from 'lucide-react';
 import { EditorState } from '../../types';
 
 interface ToolbarProps {
@@ -10,6 +10,7 @@ interface ToolbarProps {
   onDownload: () => void;
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
+  onLassoMenuAction?: (action: 'copy' | 'delete') => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -20,7 +21,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onDownload,
   onClear,
   onCanvasSizeChange,
+  onLassoMenuAction,
 }) => {
+  const [lassoMenuOpen, setLassoMenuOpen] = useState(false);
   const tools = [
     { id: 'brush', icon: Brush, label: 'ペン', shortcut: 'B' },
     { id: 'eraser', icon: Eraser, label: '消しゴム', shortcut: 'E' },
@@ -29,7 +32,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'line', icon: Brush, label: '直線', shortcut: 'L' },
     { id: 'rect', icon: Brush, label: '四角', shortcut: 'R' },
     { id: 'ellipse', icon: Brush, label: '円', shortcut: 'O' },
-    { id: 'move', icon: Brush, label: '全体移動', shortcut: 'M' },
+    { id: 'lasso', icon: Scissors, label: '投げ縄', shortcut: 'S' },
   ] as const;
 
   const undo = () => {
@@ -64,8 +67,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     onStateChange({ zoom: Math.max(editorState.zoom / 1.2, 0.5) });
   };
 
+  const handleToolClick = (toolId: EditorState['tool']) => {
+    if (toolId === 'lasso') {
+      if (editorState.tool === 'lasso') {
+        setLassoMenuOpen((prev) => !prev);
+        onStateChange({ lassoMenuOpen: !lassoMenuOpen });
+      } else {
+        setLassoMenuOpen(false);
+        onStateChange({ tool: 'lasso', lassoMenuOpen: false });
+      }
+    } else {
+      setLassoMenuOpen(false);
+      onStateChange({ tool: toolId, lassoMenuOpen: false });
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4 relative">
       {/* Tools */}
       <div>
         <h3 className="text-base font-semibold text-gray-900 mb-4">Tools</h3>
@@ -73,9 +91,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           {tools.map((tool) => {
             const Icon = tool.icon;
             return (
+              <div key={tool.id} className="relative">
               <button
-                key={tool.id}
-                onClick={() => onStateChange({ tool: tool.id })}
+                  onClick={() => handleToolClick(tool.id)}
                 className={`flex items-center space-x-4 p-5 rounded-2xl border text-xl transition-all duration-200 min-h-[64px] \
                   ${editorState.tool === tool.id
                     ? 'border-indigo-500 bg-indigo-100 text-indigo-700 shadow-lg'
@@ -86,6 +104,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <Icon className="h-9 w-9" />
                 <span className="font-semibold text-xl">{tool.label}</span>
               </button>
+                {/* Lasso menu */}
+                {tool.id === 'lasso' && lassoMenuOpen && (
+                  <div className="absolute left-full top-0 ml-2 z-10 bg-white border border-gray-300 rounded-lg shadow-lg flex flex-col w-40">
+                    <button
+                      className={`px-4 py-2 text-left hover:bg-indigo-50 ${editorState.lassoMode === 'copying' ? 'text-green-600 font-bold lasso-glow' : ''}`}
+                      style={editorState.lassoMode === 'copying' ? { textShadow: '0 0 8px #22c55e, 0 0 16px #bbf7d0' } : {}}
+                      onClick={() => onLassoMenuAction?.('copy')}
+                    >コピー</button>
+                    <button className="px-4 py-2 hover:bg-indigo-50 text-left" onClick={() => onLassoMenuAction?.('delete')}>範囲消去</button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

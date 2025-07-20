@@ -74,7 +74,7 @@ const Home: React.FC = () => {
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => navigate(isAuthenticated ? '/editor' : '/auth')}
+                onClick={() => navigate(isAuthenticated ? '/editor' : '/')}
                 className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-2xl hover:from-indigo-700 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 {isAuthenticated ? '作成を開始' : 'ログインして開始'}
@@ -179,7 +179,7 @@ const Home: React.FC = () => {
             すでに数千人のアーティストが素晴らしいドット絵を作成・共有しています。
           </p>
           <button
-            onClick={() => navigate('/auth')}
+            onClick={() => navigate('/')}
             className="inline-flex items-center px-8 py-4 bg-white text-indigo-600 font-semibold rounded-2xl hover:bg-gray-50 transform hover:scale-105 transition-all duration-200 shadow-lg"
           >
             無料で始める
