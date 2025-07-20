@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw, Upload, Scissors } from 'lucide-react';
 import { EditorState } from '../../types';
@@ -10,7 +11,7 @@ interface ToolbarProps {
   onDownload: () => void;
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
-  onLassoMenuAction?: (action: 'copy' | 'delete') => void;
+  onLassoMenuAction?: (action: 'copy' | 'delete' | 'move') => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -112,6 +113,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                       style={editorState.lassoMode === 'copying' ? { textShadow: '0 0 8px #22c55e, 0 0 16px #bbf7d0' } : {}}
                       onClick={() => onLassoMenuAction?.('copy')}
                     >コピー</button>
+                    <button
+                      className={`px-4 py-2 text-left hover:bg-indigo-50 ${editorState.lassoMode === 'moving' ? 'text-blue-600 font-bold lasso-glow' : ''}`}
+                      style={editorState.lassoMode === 'moving' ? { textShadow: '0 0 8px #2563eb, 0 0 16px #bfdbfe' } : {}}
+                      onClick={() => onLassoMenuAction?.('move')}
+                    >移動</button>
                     <button className="px-4 py-2 hover:bg-indigo-50 text-left" onClick={() => onLassoMenuAction?.('delete')}>範囲消去</button>
                   </div>
                 )}

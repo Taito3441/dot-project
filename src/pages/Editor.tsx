@@ -76,7 +76,7 @@ const Editor: React.FC = () => {
   const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
-  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete'>(null);
+  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
 
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
@@ -395,7 +395,7 @@ const Editor: React.FC = () => {
             onDownload={handleDownload}
             onClear={handleClear}
             onCanvasSizeChange={handleCanvasSizeChange}
-            onLassoMenuAction={setLassoMenuAction}
+            onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
           />
         </div>
         <div className="flex-1 flex flex-col items-center justify-start">
@@ -405,8 +405,8 @@ const Editor: React.FC = () => {
               onStateChange={updateEditorState}
               width={canvasSize.width}
               height={canvasSize.height}
-              lassoMenuAction={lassoMenuAction}
-              setLassoMenuAction={setLassoMenuAction}
+              lassoMenuAction={lassoMenuAction as 'copy' | 'delete' | 'move' | null}
+              setLassoMenuAction={setLassoMenuAction as (action: null) => void}
             />
           </div>
         </div>

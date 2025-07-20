@@ -58,6 +58,7 @@ export interface EditorState {
   lassoMode?: 'idle' | 'selecting' | 'moving' | 'copying';
   lassoMenuOpen?: boolean;
   lassoMirror?: boolean; // 左右反転中か
+  lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
 }
 
 export interface FirebasePixelArt {
