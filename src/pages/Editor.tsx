@@ -245,10 +245,11 @@ const Editor: React.FC = () => {
       canvasSize.height
     );
     try {
+      const safeLayers = editorState.layers
+        .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+        .map(l => ({ ...l, canvas: l.canvas.flat() }));
       if (artworkId) {
-        const safeLayers = editorState.layers
-          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
-          .map(l => ({ ...l, canvas: l.canvas.flat() }));
+        // 既存作品の上書き保存
         await PixelArtService.updatePixelArt(artworkId, {
           title: saveData.title || 'Untitled',
           description: saveData.description || '',
@@ -263,10 +264,8 @@ const Editor: React.FC = () => {
           layers: safeLayers as any,
         });
       } else {
-        const safeLayers = editorState.layers
-          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
-          .map(l => ({ ...l, canvas: l.canvas.flat() }));
-        await PixelArtService.uploadPixelArt(
+        // 新規作成（初回のみ）
+        const newId = await PixelArtService.uploadPixelArt(
           saveData.title || 'Untitled',
           saveData.description || '',
           merged,
@@ -275,6 +274,8 @@ const Editor: React.FC = () => {
           true, // isDraft
           safeLayers as any
         );
+        // artworkIdをセットして以降は上書き保存
+        // setArtworkId(newId); // artworkIdはuseParamsで管理
       }
       setLastAutoSave(Date.now());
     } catch (e) {
