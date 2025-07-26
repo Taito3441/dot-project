@@ -9,6 +9,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
 import type { ColorPaletteProps } from '../components/PixelEditor/ColorPalette';
 import { useParams } from "react-router-dom";
+import * as Y from 'yjs';
+import { WebrtcProvider } from 'y-webrtc';
+import { isDrawingRef } from '../components/PixelEditor/Canvas';
 
 // --- レイヤー合成関数 ---
 function hexToRgba(hex: string, alpha: number = 1) {
@@ -63,25 +66,11 @@ const AUTO_SAVE_INTERVAL = 30000; // 30秒
 const Editor: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const { artworkId } = useParams<{ artworkId: string }>();
-  const [canvasSize, setCanvasSize] = useState({ width: 32, height: 32 });
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [saveData, setSaveData] = useState({ title: '', description: '' });
-  const [isUploading, setIsUploading] = useState(false);
-  const [isDraftSave, setIsDraftSave] = useState(false);
-  const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-  const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
-  const [isSliderActive, setIsSliderActive] = useState(false);
-  // カラーパレットの座標を管理
-  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
-  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
-  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
-
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 32, height: 32 });
   const [editorState, setEditorState] = useState<EditorState>(() => {
     const initialCanvas = createEmptyCanvas(32, 32);
     const initialLayer: Layer = {
-      id: 'layer-1',
+      id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`,
       name: 'レイヤー 1',
       canvas: initialCanvas,
       opacity: 1,
@@ -101,13 +90,180 @@ const Editor: React.FC = () => {
       backgroundPattern: 'light',
     };
   });
+  // --- Yjs/Y-webrtc同期セットアップ ---
+  const ydocRef = useRef<Y.Doc>();
+  const providerRef = useRef<WebrtcProvider>();
+  const yLayersRef = useRef<Y.Array<any>>();
+  const yCanvasSizeRef = useRef<Y.Map<any>>();
+  const isYjsUpdateRef = useRef(false);
+
+  // 初期化（artworkIdが変わるたび）
+  useEffect(() => {
+    if (!artworkId) return;
+    // YjsドキュメントとProvider初期化
+    const ydoc = new Y.Doc();
+    const provider = new WebrtcProvider(artworkId, ydoc, {
+      signaling: ['wss://pixelshare.fly.dev'], // fly.ioのURLに合わせてください
+    });
+    ydocRef.current = ydoc;
+    providerRef.current = provider;
+    // Yjsで同期するデータ構造
+    const yLayers = ydoc.getArray('layers');
+    const yCanvasSize = ydoc.getMap('canvasSize');
+    yLayersRef.current = yLayers;
+    yCanvasSizeRef.current = yCanvasSize;
+
+    // Yjs→React state反映
+    const updateFromYjs = () => {
+      if (isDrawingRef.current) return; // ドラッグ中はlayers上書きをスキップ
+      isYjsUpdateRef.current = true;
+      const layersRaw = yLayers.toArray();
+      const seen = new Set<string>();
+      const layers: Layer[] = (layersRaw as Layer[])
+        .map(l => ({
+          ...l,
+          canvas: Array.isArray(l.canvas) ? l.canvas : createEmptyCanvas(
+            typeof (l as any).canvas?.[0]?.length === 'number' ? (l as any).canvas[0].length : 32,
+            typeof (l as any).canvas?.length === 'number' ? (l as any).canvas.length : 32
+          )
+        }))
+        .filter(l => {
+          if (seen.has(l.id)) return false;
+          seen.add(l.id);
+          return true;
+        });
+      const widthRaw = yCanvasSize.get('width');
+      const heightRaw = yCanvasSize.get('height');
+      const width = typeof widthRaw === 'number' ? widthRaw : 32;
+      const height = typeof heightRaw === 'number' ? heightRaw : 32;
+      // 変更がある場合のみstateを更新
+      if (JSON.stringify(editorState.layers) !== JSON.stringify(layers)) {
+        updateEditorState({ layers });
+      }
+      if (canvasSize.width !== width || canvasSize.height !== height) {
+        setCanvasSize({ width, height });
+      }
+      isYjsUpdateRef.current = false;
+    };
+    yLayers.observeDeep(updateFromYjs);
+    yCanvasSize.observeDeep(updateFromYjs);
+
+    // 初回: Yjsが空ならローカルstateをYjsにpush、空でなければ必ずローカルstateをYjsの内容で上書き
+    if (yLayers.length === 0) {
+      // editorState.layersをIDで一意化してpush
+      const uniqueInitLayers = [];
+      const seenInit = new Set();
+      for (const l of editorState.layers) {
+        if (!seenInit.has(l.id)) {
+          uniqueInitLayers.push(l);
+          seenInit.add(l.id);
+        }
+      }
+      uniqueInitLayers.forEach(l => yLayers.push([l]));
+      if (!yCanvasSize.get('width')) yCanvasSize.set('width', canvasSize.width);
+      if (!yCanvasSize.get('height')) yCanvasSize.set('height', canvasSize.height);
+    } else {
+      // Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
+      const layersRaw = yLayers.toArray();
+      const seen = new Set<string>();
+      const layers: Layer[] = (layersRaw as Layer[])
+        .map(l => ({
+          ...l,
+          canvas: Array.isArray(l.canvas) ? l.canvas : createEmptyCanvas(
+            typeof (l as any).canvas?.[0]?.length === 'number' ? (l as any).canvas[0].length : 32,
+            typeof (l as any).canvas?.length === 'number' ? (l as any).canvas.length : 32
+          )
+        }))
+        .filter(l => {
+          if (seen.has(l.id)) return false;
+          seen.add(l.id);
+          return true;
+        });
+      const widthRaw = yCanvasSize.get('width');
+      const heightRaw = yCanvasSize.get('height');
+      const width = typeof widthRaw === 'number' ? widthRaw : 32;
+      const height = typeof heightRaw === 'number' ? heightRaw : 32;
+      setCanvasSize({ width, height });
+      if (layers.length > 0) {
+        updateEditorState({ layers });
+      }
+    }
+    // 初回反映
+    updateFromYjs();
+    // クリーンアップ
+    return () => {
+      yLayers.unobserveDeep(updateFromYjs);
+      yCanvasSize.unobserveDeep(updateFromYjs);
+      provider.destroy();
+      ydoc.destroy();
+    };
+  }, [artworkId]);
+
+  // React state→Yjs反映（layers/canvasSizeのみ）
+  useEffect(() => {
+    if (!yLayersRef.current || !yCanvasSizeRef.current) return;
+    if (isYjsUpdateRef.current) return; // Yjs由来の更新なら何もしない
+    // layers
+    const yLayers = yLayersRef.current;
+    const layers = editorState.layers;
+    // Yjs側のIDリスト
+    const yLayerArr = yLayers.toArray();
+    const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
+    // 追加・更新
+    layers.forEach(l => {
+      const idx = (yLayerArr as Layer[]).findIndex(yl => yl.id === l.id);
+      if (idx === -1) {
+        yLayers.push([l]);
+      } else {
+        // update: 既存レイヤーを置き換え
+        yLayers.delete(idx, 1);
+        yLayers.insert(idx, [l]);
+      }
+    });
+    // Yjsにしかないレイヤーは削除
+    const toDelete: number[] = [];
+    (yLayerArr as Layer[]).forEach((yl, idx) => {
+      if (!layers.find(l => l.id === yl.id)) {
+        toDelete.push(idx);
+      }
+    });
+    toDelete.sort((a, b) => b - a); // 降順
+    toDelete.forEach(idx => yLayers.delete(idx, 1));
+    // canvasSize
+    const yCanvasSize = yCanvasSizeRef.current;
+    if (yCanvasSize.get('width') !== canvasSize.width) {
+      yCanvasSize.set('width', canvasSize.width);
+    }
+    if (yCanvasSize.get('height') !== canvasSize.height) {
+      yCanvasSize.set('height', canvasSize.height);
+    }
+  }, [editorState.layers, canvasSize]);
+
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveData, setSaveData] = useState({ title: '', description: '' });
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDraftSave, setIsDraftSave] = useState(false);
+  const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
+  const [isSliderActive, setIsSliderActive] = useState(false);
+  // カラーパレットの座標を管理
+  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
+  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
 
   const updateEditorState = (newState: Partial<EditorState>) => {
     setEditorState(prev => {
-      let next = { ...prev, ...newState };
-      // canvasはlayers[currentLayer].canvasで常に同期
-      if (next.layers && typeof next.currentLayer === 'number' && next.layers[next.currentLayer]) {
-        next.canvas = next.layers[next.currentLayer].canvas;
+      const next = { ...prev, ...newState };
+      if (
+        JSON.stringify(prev.layers) === JSON.stringify(next.layers) &&
+        JSON.stringify(prev.canvas) === JSON.stringify(next.canvas) &&
+        prev.currentLayer === next.currentLayer &&
+        prev.historyIndex === next.historyIndex &&
+        JSON.stringify(prev.palette) === JSON.stringify(next.palette)
+      ) {
+        return prev; // 変化がなければstateを更新しない
       }
       return next;
     });
@@ -292,16 +448,19 @@ const Editor: React.FC = () => {
         setSaveData({ title: art.title, description: art.description || '' });
         setCanvasSize({ width: art.width, height: art.height });
         // レイヤー情報を完全復元（canvasは必ず二次元配列に）
-        const layers = art.layers
-          ? art.layers.map(l => ({ ...l, canvas: PixelArtService.reshapeCanvas(l.canvas, art.width, art.height) }))
-          : [{ id: 'layer-1', name: 'レイヤー 1', canvas: art.pixelData, opacity: 1, visible: true }];
+        let layers: Layer[];
+        if (art.layers && Array.isArray(art.layers) && art.layers.length > 0) {
+          layers = art.layers.map(l => ({ ...l, canvas: PixelArtService.reshapeCanvas(l.canvas, art.width, art.height) }));
+        } else {
+          layers = [{ id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`, name: 'レイヤー 1', canvas: art.pixelData || createEmptyCanvas(art.width || 32, art.height || 32), opacity: 1, visible: true }];
+        }
         setEditorState(prev => ({
           ...prev,
-          canvas: layers[0].canvas,
+          canvas: layers[0]?.canvas || createEmptyCanvas(32, 32),
           palette: art.palette,
           layers,
           currentLayer: 0,
-          history: [layers.map(l => ({ ...l, canvas: l.canvas.map(row => [...row]) }))],
+          history: [layers.map(l => ({ ...l, canvas: l.canvas?.map(row => [...row]) || createEmptyCanvas(32, 32) }))],
           historyIndex: 0,
         }));
       }
@@ -563,7 +722,7 @@ const Editor: React.FC = () => {
                   className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold w-full"
                   onClick={() => {
                     const newLayer: Layer = {
-                      id: `layer-${Date.now()}`,
+                      id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`,
                       name: `レイヤー ${editorState.layers.length + 1}`,
                       canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
                       opacity: 1,

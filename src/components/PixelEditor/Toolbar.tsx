@@ -83,6 +83,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
+  // Canvas Size Selector
+  const firstLayer = editorState.layers[0];
+  const canvasSizeValue =
+    firstLayer && firstLayer.canvas
+      ? `${firstLayer.canvas[0].length}x${firstLayer.canvas.length}`
+      : "32x32";
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4 relative">
       {/* Tools */}
@@ -178,7 +185,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Canvas Size</h3>
         <select
-          value={`${editorState.layers[0].canvas[0].length}x${editorState.layers[0].canvas.length}`}
+          value={canvasSizeValue}
           onChange={e => {
             const [width, height] = e.target.value.split('x').map(Number);
             onCanvasSizeChange(width, height);
