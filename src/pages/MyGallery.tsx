@@ -101,7 +101,7 @@ const MyGallery: React.FC = () => {
               />
               <span>下書きを全選択</span>
               <button
-                className="ml-2 px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                className="ml-2 px-3 py-1 text-xs bg-transparent text-red-500 border border-red-500 rounded hover:bg-red-500 hover:text-white disabled:opacity-50 transition-colors"
                 onClick={handleBulkDelete}
                 disabled={selectedIds.length === 0}
               >
@@ -132,7 +132,7 @@ const MyGallery: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-yellow-600 ml-2">下書き</span>
                   <button
-                    className="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                    className="ml-2 px-2 py-1 text-xs bg-transparent text-red-500 border border-red-500 rounded hover:bg-red-500 hover:text-white transition-colors"
                     onClick={e => { e.stopPropagation(); handleDelete(art.id!, true); }}
                   >
                     削除
@@ -151,7 +151,7 @@ const MyGallery: React.FC = () => {
               />
               <span>投稿済み作品を全選択</span>
               <button
-                className="ml-2 px-3 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                className="ml-2 px-3 py-1 text-xs bg-transparent text-red-500 border border-red-500 rounded hover:bg-red-500 hover:text-white disabled:opacity-50 transition-colors"
                 onClick={handleBulkDelete}
                 disabled={selectedIds.length === 0}
               >
@@ -180,7 +180,7 @@ const MyGallery: React.FC = () => {
                   <span>{art.title}</span>
                 </div>
                 <button
-                  className="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                  className="ml-2 px-2 py-1 text-xs bg-transparent text-red-500 border border-red-500 rounded hover:bg-red-500 hover:text-white transition-colors"
                   onClick={e => { e.stopPropagation(); handleDelete(art.id!, false); }}
                 >
                   削除
