@@ -7,22 +7,28 @@ interface ToolbarProps {
   editorState: EditorState;
   onStateChange: (newState: Partial<EditorState>) => void;
   onSave: () => void;
-  onSaveDraft: () => void;
   onDownload: () => void;
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
   onLassoMenuAction?: (action: 'copy' | 'delete' | 'move') => void;
+  backgroundPattern: 'light' | 'dark';
+  onBackgroundPatternChange: (pattern: 'light' | 'dark') => void;
+  showGrid: boolean;
+  onShowGridChange: (show: boolean) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   editorState,
   onStateChange,
   onSave,
-  onSaveDraft,
   onDownload,
   onClear,
   onCanvasSizeChange,
   onLassoMenuAction,
+  backgroundPattern,
+  onBackgroundPatternChange,
+  showGrid,
+  onShowGridChange,
 }) => {
   const [lassoMenuOpen, setLassoMenuOpen] = useState(false);
   const tools = [
@@ -83,6 +89,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
+  // Canvas Size Selector
+  const firstLayer = editorState.layers[0];
+  const canvasSizeValue =
+    firstLayer && firstLayer.canvas
+      ? `${firstLayer.canvas[0].length}x${firstLayer.canvas.length}`
+      : "32x32";
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4 relative">
       {/* Tools */}
@@ -127,58 +140,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
-      {/* History */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">History</h3>
-        <div className="flex space-x-2">
-          <button
-            onClick={undo}
-            disabled={editorState.historyIndex <= 0}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo className="h-4 w-4" />
-          </button>
-          <button
-            onClick={redo}
-            disabled={editorState.historyIndex >= editorState.history.length - 1}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            title="Redo (Ctrl+Y)"
-          >
-            <Redo className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Zoom */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Zoom</h3>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={zoomOut}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200"
-            title="Zoom Out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <span className="text-sm font-medium text-gray-600 min-w-[3rem] text-center">
-            {Math.round(editorState.zoom * 100)}%
-          </span>
-          <button
-            onClick={zoomIn}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200"
-            title="Zoom In"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
       {/* Canvas Size Selector */}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Canvas Size</h3>
         <select
-          value={`${editorState.layers[0].canvas[0].length}x${editorState.layers[0].canvas.length}`}
+          value={canvasSizeValue}
           onChange={e => {
             const [width, height] = e.target.value.split('x').map(Number);
             onCanvasSizeChange(width, height);
@@ -201,8 +167,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="relative inline-block w-12 h-7 align-middle select-none">
               <input
                 type="checkbox"
-                checked={editorState.showGrid}
-                onChange={e => onStateChange({ showGrid: e.target.checked })}
+                checked={showGrid}
+                onChange={e => onShowGridChange(e.target.checked)}
                 className="sr-only peer"
               />
               <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
@@ -221,8 +187,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="relative inline-block w-12 h-7 align-middle select-none">
               <input
                 type="checkbox"
-                checked={editorState.backgroundPattern === 'dark'}
-                onChange={e => onStateChange({ backgroundPattern: e.target.checked ? 'dark' : 'light' })}
+                checked={backgroundPattern === 'dark'}
+                onChange={e => onBackgroundPatternChange(e.target.checked ? 'dark' : 'light')}
                 className="sr-only peer"
               />
               <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
@@ -236,13 +202,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Actions</h3>
         <div className="space-y-2">
-          <button
-            onClick={onSaveDraft}
-            className="w-full flex items-center justify-center space-x-2 p-2 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 transition-colors duration-200"
-          >
-            <Save className="h-4 w-4" />
-            <span className="text-sm font-medium">下書き保存</span>
-          </button>
           <button
             onClick={onSave}
             className="w-full flex items-center justify-center space-x-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"

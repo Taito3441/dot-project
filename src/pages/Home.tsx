@@ -5,7 +5,7 @@ import { PixelArtService } from '../services/pixelArtService';
 import { useNavigate } from 'react-router-dom';
 
 const Home: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = React.useState({
@@ -45,6 +45,18 @@ const Home: React.FC = () => {
     },
   ];
 
+  const handleStart = async () => {
+    if (isAuthenticated) {
+      navigate('/editor');
+    } else {
+      const success = await loginWithGoogle();
+      if (success) {
+        navigate('/editor');
+      }
+      // 失敗時はエラー表示なども追加可能
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -74,7 +86,7 @@ const Home: React.FC = () => {
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
-                onClick={() => navigate(isAuthenticated ? '/editor' : '/')}
+                onClick={handleStart}
                 className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-2xl hover:from-indigo-700 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 {isAuthenticated ? '作成を開始' : 'ログインして開始'}

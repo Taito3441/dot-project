@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { EditorState } from '../../types';
 import { floodFill } from '../../utils/pixelArt';
 import { createEmptyCanvas } from '../../utils/pixelArt';
@@ -10,6 +10,8 @@ interface CanvasProps {
   height: number;
   lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
   setLassoMenuAction?: (action: null) => void;
+  backgroundPattern: 'light' | 'dark';
+  showGrid: boolean;
 }
 
 type Layer = {
@@ -20,6 +22,8 @@ type Layer = {
   visible: boolean;
 };
 
+export const isDrawingRef = { current: false };
+
 export const Canvas: React.FC<CanvasProps> = ({
   editorState,
   onStateChange,
@@ -27,6 +31,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   height,
   lassoMenuAction,
   setLassoMenuAction,
+  backgroundPattern,
+  showGrid,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -97,7 +103,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     drawCanvas();
-  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid, editorState.backgroundPattern]);
+  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, showGrid, backgroundPattern]);
 
   useEffect(() => {
     currentLassoRef.current = currentLassoRef.current;
@@ -305,9 +311,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // Draw background grid (市松模様)
     const gridSize = Math.max(4, Math.floor(pixelSize / 3));
-    const isDark = editorState.backgroundPattern === 'dark';
-    const colorA = isDark ? '#222' : '#f3f4f6';
-    const colorB = isDark ? '#444' : '#e5e7eb';
+    const isDark = backgroundPattern === 'dark';
+    const colorA = isDark ? '#111' : '#f3f4f6';
+    const colorB = isDark ? '#222' : '#e5e7eb';
     for (let y = 0; y < canvasHeight; y += gridSize) {
       for (let x = 0; x < canvasWidth; x += gridSize) {
         ctx.fillStyle = ((x / gridSize + y / gridSize) % 2 === 0) ? colorA : colorB;
@@ -316,7 +322,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     // Draw grid lines
-    if (editorState.showGrid) {
+    if (showGrid) {
       ctx.strokeStyle = editorState.backgroundPattern === 'dark' ? '#fff' : '#000';
       ctx.lineWidth = 0.25;
       for (let x = 0; x <= width; x++) {
@@ -343,7 +349,9 @@ export const Canvas: React.FC<CanvasProps> = ({
         for (let l = 0; l < layers.length; l++) {
           const layer = layers[l];
           if (!layer.visible) continue;
-          const colorIndex = layer.canvas[y][x];
+          // 現在編集中のレイヤーだけはcanvasDataRef.currentを参照
+          const canvas = (l === editorState.currentLayer) ? canvasDataRef.current : layer.canvas;
+          const colorIndex = canvas[y][x];
           if (colorIndex > 0) {
             const hex = editorState.palette[colorIndex - 1];
             const fg = hexToRgba(hex, layer.opacity);
@@ -740,7 +748,6 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseMove = (event: React.MouseEvent) => {
-    console.log('mousemove', isLassoingRef.current, editorState.tool);
     if (isPanning) return; // パン中は描画操作を無効化
     // コピー中でドラッグ中は、マウス位置に追従してプレビュー
     if (editorState.tool === 'lasso' && lassoMode === 'copying' && lassoSelections.length > 0 && lassoDragStart && isLassoing) {
@@ -803,63 +810,17 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!coords || !dragStart) return;
 
     const points = getLinePoints(dragStart, coords);
-    let painted = false;
     for (const point of points) {
       if (editorState.tool === 'eraser') {
         drawPixelDirect(point.x, point.y, true);
-        painted = true;
       } else {
         drawPixelDirect(point.x, point.y);
-        painted = true;
       }
-    }
-    if (painted) {
-      // 即時反映: 選択中レイヤーのcanvasを更新
-      const newLayers = editorState.layers.map((l, i) =>
-        i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
-      );
-      onStateChange({ layers: newLayers });
     }
     setDragStart(coords);
 
-    // --- 投げ縄ツール ---
-    if (editorState.tool === 'lasso' && isLassoingRef.current) {
-      const coords = getPixelCoordinates(event);
-      if (!coords) return;
-      if (!lastLassoPointRef.current) {
-        lastLassoPointRef.current = coords;
-      }
-      const last = lastLassoPointRef.current;
-      // 線分補間
-      const points: { x: number; y: number }[] = [];
-      const dx = coords.x - last.x;
-      const dy = coords.y - last.y;
-      const steps = Math.max(Math.abs(dx), Math.abs(dy));
-      for (let i = 1; i <= steps; i++) {
-        const nx = last.x + Math.round((dx * i) / steps);
-        const ny = last.y + Math.round((dy * i) / steps);
-        points.push({ x: nx, y: ny });
-      }
-      // 既存のcurrentLassoRefに新しい点を追加
-      const prev = currentLassoRef.current;
-      const newPoints = points.filter(
-        (p) => !prev.some((q) => q.x === p.x && q.y === p.y)
-      );
-      currentLassoRef.current = [...prev, ...newPoints];
-      lastLassoPointRef.current = coords;
-      window.requestAnimationFrame(drawCanvas);
-      return;
-    } else if (editorState.tool === 'lasso' && lassoMode === 'copying' && lassoDragStart) {
-      const coords = getPixelCoordinates(event);
-      if (!coords) return;
-      setLassoDragOffset({ x: coords.x - lassoDragStart.x, y: coords.y - lassoDragStart.y });
-    }
-    // 移動モード時: ドラッグ中のみオフセットを更新
-    if (editorState.tool === 'lasso' && lassoMode === 'moving' && lassoDragStart && isLassoing) {
-      const coords = getPixelCoordinates(event);
-      if (!coords) return;
-      setLassoDragOffset({ x: coords.x - lassoDragStart.x, y: coords.y - lassoDragStart.y });
-    }
+    // ローカルのcanvasを即時再描画
+    drawCanvas();
   };
 
   // --- コピー確定処理 ---
@@ -1014,12 +975,25 @@ export const Canvas: React.FC<CanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lassoMode, lassoSelections, lassoDragOffset, editorState.layers, editorState.currentLayer]);
 
+  // 1. handleWheel関数を追加
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    let newZoom = editorState.zoom;
+    if (e.deltaY < 0) {
+      newZoom = Math.min(editorState.zoom * 1.1, 8); // 最大8倍
+    } else {
+      newZoom = Math.max(editorState.zoom / 1.1, 0.1); // 最小0.1倍
+    }
+    onStateChange({ zoom: newZoom });
+  };
+
   return (
     <div
       className="flex items-center justify-center p-0 bg-transparent border-none select-none"
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
+      onWheel={handleWheel}
       style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : editorState.tool === 'move' ? 'move' : undefined }}
     >
       <div
