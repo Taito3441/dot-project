@@ -262,7 +262,8 @@ const Editor: React.FC = () => {
         prev.currentLayer === next.currentLayer &&
         prev.historyIndex === next.historyIndex &&
         JSON.stringify(prev.palette) === JSON.stringify(next.palette) &&
-        prev.currentColor === next.currentColor
+        prev.currentColor === next.currentColor &&
+        prev.tool === next.tool
       ) {
         return prev; // 変化がなければstateを更新しない
       }
