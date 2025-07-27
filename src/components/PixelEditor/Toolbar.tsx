@@ -7,7 +7,6 @@ interface ToolbarProps {
   editorState: EditorState;
   onStateChange: (newState: Partial<EditorState>) => void;
   onSave: () => void;
-  onSaveDraft: () => void;
   onDownload: () => void;
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
@@ -22,7 +21,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   editorState,
   onStateChange,
   onSave,
-  onSaveDraft,
   onDownload,
   onClear,
   onCanvasSizeChange,

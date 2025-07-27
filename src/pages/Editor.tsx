@@ -297,16 +297,14 @@ const Editor: React.FC = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveData, setSaveData] = useState({ title: '', description: '' });
   const [isUploading, setIsUploading] = useState(false);
-  const [isDraftSave, setIsDraftSave] = useState(false);
-  const [dragLayerIdx, setDragLayerIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-  const [sliderDragStart, setSliderDragStart] = useState<{x: number, y: number} | null>(null);
-  const [isSliderActive, setIsSliderActive] = useState(false);
   // カラーパレットの座標を管理
   const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
   const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
   const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
+
+  // 投稿完了ダイアログ用の状態
+  const [showPostComplete, setShowPostComplete] = useState(false);
 
   const updateEditorState = (newState: Partial<EditorState>) => {
     setEditorState(prev => {
@@ -345,11 +343,7 @@ const Editor: React.FC = () => {
     updateEditorState(newState);
   };
 
-  const handleSave = (asDraft = false) => {
-    if (!isAuthenticated) {
-      return;
-    }
-    setIsDraftSave(asDraft);
+  const handleSave = () => {
     setShowSaveDialog(true);
   };
 
@@ -375,15 +369,17 @@ const Editor: React.FC = () => {
           width: canvasSize.width,
           height: canvasSize.height,
           palette: editorState.palette,
-          isDraft: isDraftSave,
-          isPublic: !isDraftSave,
+          isDraft: false,
+          isPublic: true,
           layers: safeLayers as any,
           canvas: merged,
           user,
+          roomId: artworkId,
+          roomTitle: editorState.roomTitle || '無題',
         });
         setShowSaveDialog(false);
         setSaveData({ title: '', description: '' });
-        alert(isDraftSave ? '下書き保存成功しました！' : '作品を投稿しました！');
+        setShowPostComplete(true);
       } else {
         // 新規作成
         const safeLayers = editorState.layers
@@ -395,16 +391,17 @@ const Editor: React.FC = () => {
           merged,
           editorState.palette,
           user,
-          isDraftSave,
-          safeLayers as any
+          false, // isDraft: false
+          safeLayers as any,
+          artworkId,
+          editorState.roomTitle || '無題'
         );
         setShowSaveDialog(false);
         setSaveData({ title: '', description: '' });
-        alert(isDraftSave ? '下書き保存成功しました！' : '作品が正常にアップロードされました！');
+        setShowPostComplete(true);
       }
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert('保存に失敗しました。もう一度お試しください。');
+    } catch (e) {
+      alert('保存に失敗しました');
     } finally {
       setIsUploading(false);
     }
@@ -471,11 +468,13 @@ const Editor: React.FC = () => {
           width: canvasSize.width,
           height: canvasSize.height,
           palette: editorState.palette,
-          isDraft: true,
-          isPublic: false,
+          isDraft: false,
+          isPublic: true,
           canvas: merged,
           user,
           layers: safeLayers as any,
+          roomId: artworkId,
+          roomTitle: editorState.roomTitle || '無題',
         });
       } else {
         // 新規作成（初回のみ）
@@ -485,8 +484,10 @@ const Editor: React.FC = () => {
           merged,
           editorState.palette,
           user,
-          true, // isDraft
-          safeLayers as any
+          false, // isDraft
+          safeLayers as any,
+          artworkId,
+          editorState.roomTitle || '無題'
         );
         // artworkIdをセットして以降は上書き保存
         // setArtworkId(newId); // artworkIdはuseParamsで管理
@@ -640,8 +641,7 @@ const Editor: React.FC = () => {
           <Toolbar
             editorState={editorState}
             onStateChange={updateEditorState}
-            onSave={() => handleSave(false)}
-            onSaveDraft={() => handleSave(true)}
+            onSave={handleSave}
             onDownload={handleDownload}
             onClear={handleClear}
             onCanvasSizeChange={handleCanvasSizeChange}
@@ -721,29 +721,7 @@ const Editor: React.FC = () => {
                     <div
                       key={layer.id}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
-                        ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'} \
-                        ${dragLayerIdx === idx ? 'opacity-60 border-indigo-400' : ''} \
-                        ${dragOverIdx === idx && dragLayerIdx !== null && dragLayerIdx !== idx ? 'ring-2 ring-indigo-300' : ''}`}
-                      draggable={!isSliderActive}
-                      onDragStart={() => setDragLayerIdx(idx)}
-                      onDragEnd={() => { setDragLayerIdx(null); setDragOverIdx(null); }}
-                      onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
-                      onDragLeave={e => { e.preventDefault(); setDragOverIdx(null); }}
-                      onDrop={e => {
-                        e.preventDefault();
-                        if (dragLayerIdx === null || dragLayerIdx === idx) return;
-                        const newLayers = [...editorState.layers];
-                        const moved = newLayers.splice(dragLayerIdx, 1)[0];
-                        newLayers.splice(idx, 0, moved);
-                        let newCurrent = idx;
-                        if (editorState.currentLayer === dragLayerIdx) newCurrent = idx;
-                        else if (editorState.currentLayer > dragLayerIdx && editorState.currentLayer <= idx) newCurrent = editorState.currentLayer - 1;
-                        else if (editorState.currentLayer < dragLayerIdx && editorState.currentLayer >= idx) newCurrent = editorState.currentLayer + 1;
-                        else newCurrent = editorState.currentLayer;
-                        updateEditorState({ layers: newLayers, currentLayer: newCurrent });
-                        setDragLayerIdx(null); setDragOverIdx(null);
-                      }}
-                      style={{ cursor: 'grab', width: '100%' }}
+                        ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'}`}
                       onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
                     >
                       <button
@@ -792,21 +770,6 @@ const Editor: React.FC = () => {
                             const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
                             updateEditorState({ layers: newLayers });
                           }}
-                          onPointerDown={e => {
-                            setSliderDragStart({ x: e.clientX, y: e.clientY });
-                            setIsSliderActive(true);
-                            e.stopPropagation();
-                          }}
-                          onPointerMove={e => {
-                            if (!sliderDragStart) return;
-                            const dx = Math.abs(e.clientX - sliderDragStart.x);
-                            const dy = Math.abs(e.clientY - sliderDragStart.y);
-                            if (dx > dy) {
-                              e.stopPropagation();
-                            }
-                          }}
-                          onPointerUp={() => { setSliderDragStart(null); setIsSliderActive(false); }}
-                          onPointerLeave={() => { setSliderDragStart(null); setIsSliderActive(false); }}
                           className="w-20 accent-indigo-500"
                         />
                         <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
@@ -837,7 +800,7 @@ const Editor: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{isDraftSave ? (artworkId ? '下書き上書き保存' : '下書き保存') : (artworkId ? '作品を上書き投稿' : '作品を投稿')}</h3>
+              <h3 className="text-lg font-semibold text-gray-900">作品を投稿</h3>
               <button
                 onClick={() => setShowSaveDialog(false)}
                 className="p-1 text-gray-400 hover:text-gray-600 rounded"
@@ -898,11 +861,24 @@ const Editor: React.FC = () => {
                 ) : (
                   <>
                     <Upload className="h-4 w-4 inline mr-2" />
-                    {isDraftSave ? (artworkId ? '下書き上書き保存' : '下書き保存') : (artworkId ? '上書き投稿' : '投稿する')}
+                    投稿する
                   </>
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* 投稿完了ダイアログ */}
+      {showPostComplete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xs flex flex-col items-center">
+            <div className="text-2xl mb-4">🎉</div>
+            <div className="text-lg font-semibold mb-2">投稿が完了しました！</div>
+            <button
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              onClick={() => setShowPostComplete(false)}
+            >OK</button>
           </div>
         </div>
       )}

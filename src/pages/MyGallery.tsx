@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { PixelArtService } from "../services/pixelArtService";
 import { FirebasePixelArt } from "../types";
 import { Clipboard } from 'lucide-react';
+import { FirebaseGallery } from '../components/Gallery/FirebaseGallery';
 
 interface RoomHistory {
   artworkId: string;
@@ -19,6 +20,8 @@ const MyGallery: React.FC = () => {
   const [history, setHistory] = useState<RoomHistory[]>([]);
   const [serialInput, setSerialInput] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
+  const [postedArtworks, setPostedArtworks] = useState<FirebasePixelArt[]>([]);
+  const [loadingPosted, setLoadingPosted] = useState(false);
 
   // 履歴のローカルストレージ管理
   useEffect(() => {
@@ -27,6 +30,38 @@ const MyGallery: React.FC = () => {
       setHistory(JSON.parse(raw));
     }
   }, []);
+
+  // 投稿作品の取得
+  useEffect(() => {
+    const fetchPostedArtworks = async () => {
+      setLoadingPosted(true);
+      try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        const historyList: RoomHistory[] = raw ? JSON.parse(raw) : [];
+        const roomIds = historyList.map(h => h.artworkId).filter(Boolean);
+        if (roomIds.length === 0) {
+          setPostedArtworks([]);
+          setLoadingPosted(false);
+          return;
+        }
+        // Firestoreから全公開作品を取得し、roomIdが一致するものだけ抽出
+        const allArtworks = await PixelArtService.getPublicArtworks(100);
+        const filtered = allArtworks.filter(a => a.roomId && roomIds.includes(a.roomId));
+        // 新しい順
+        filtered.sort((a, b) => {
+          const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt);
+          const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt);
+          return bTime.getTime() - aTime.getTime();
+        });
+        setPostedArtworks(filtered);
+      } catch (e) {
+        setPostedArtworks([]);
+      } finally {
+        setLoadingPosted(false);
+      }
+    };
+    fetchPostedArtworks();
+  }, [history]);
 
   const saveHistory = (newHistory: RoomHistory[]) => {
     setHistory(newHistory);
@@ -75,6 +110,27 @@ const MyGallery: React.FC = () => {
           参加
         </button>
       </div>
+      {/* 投稿された作品欄 */}
+      <h2 className="text-lg font-semibold mb-2">投稿された作品</h2>
+      {loadingPosted ? (
+        <div className="py-8 text-center text-gray-400">読み込み中...</div>
+      ) : postedArtworks.length === 0 ? (
+        <div className="py-8 text-center text-gray-400">投稿作品はありません</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+          {postedArtworks.map(a => (
+            <div key={a.id} className="bg-white rounded-lg shadow border p-4 flex flex-col items-center">
+              <img src={a.imageUrl} alt={a.title} className="w-32 h-32 object-contain mb-2" />
+              <div className="font-bold text-base mb-1">{a.title}</div>
+              <div className="text-xs text-gray-500 mb-1">{a.roomTitle || '(ルーム無題)'}</div>
+              <div className="text-xs text-gray-500 mb-1">by {a.authorNickname || a.authorName || 'ゲスト'}</div>
+              <div className="text-xs text-gray-700 mb-2">{a.description}</div>
+              <div className="text-xs text-gray-400">{a.createdAt?.toDate?.().toLocaleString?.() || ''}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* 履歴欄 */}
       <h2 className="text-lg font-semibold mb-2">履歴</h2>
       <table className="w-full border mt-2">
         <thead>
@@ -92,15 +148,21 @@ const MyGallery: React.FC = () => {
           {history.map(h => (
             <tr key={h.artworkId} className="border-b">
               <td className="py-2 px-4 border">{h.title || '(無題)'}</td>
-              <td className="py-2 px-4 border font-mono">{h.artworkId}</td>
+              <td className="py-2 px-4 border font-mono flex items-center gap-2">
+                {h.artworkId}
+                <button
+                  className="ml-1 p-1 bg-gray-100 rounded hover:bg-gray-200"
+                  title="コピー"
+                  onClick={() => handleCopy(h.artworkId)}
+                >
+                  <Clipboard className="w-4 h-4" />
+                </button>
+                {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
+              </td>
               <td className="py-2 px-4 border">{h.lastEdited}</td>
               <td className="py-2 px-4 border flex gap-2 items-center">
                 <button className="px-2 py-1 bg-blue-500 text-white rounded text-xs" onClick={() => handleEdit(h.artworkId)}>編集</button>
-                <button className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs flex items-center" onClick={() => handleCopy(h.artworkId)}>
-                  <Clipboard className="w-4 h-4 mr-1" />コピー
-                </button>
                 <button className="px-2 py-1 bg-red-500 text-white rounded text-xs" onClick={() => handleDelete(h.artworkId)}>削除</button>
-                {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
               </td>
             </tr>
           ))}

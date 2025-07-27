@@ -83,6 +83,8 @@ export interface FirebasePixelArt {
   likedUserIds?: string[];
   isDraft?: boolean;
   layers?: LayerFirestore[]; // Firestore保存用
+  roomId?: string; // 追加: ルームID（シリアルコード）
+  roomTitle?: string; // 追加: ルームタイトル
 }
 
 export interface ChatGPTIntegration {

@@ -40,7 +40,9 @@ export class PixelArtService {
     palette: string[],
     user: User,
     isDraft: boolean = false,
-    layers?: Layer[]
+    layers?: Layer[],
+    roomId?: string,
+    roomTitle?: string
   ): Promise<string> {
     try {
       // Generate image data
@@ -79,6 +81,8 @@ export class PixelArtService {
         layers: safeLayers,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        roomId,
+        roomTitle,
       };
 
       const docRef = await addDoc(collection(db, this.COLLECTION_NAME), artworkData);
@@ -122,6 +126,8 @@ export class PixelArtService {
           isPublic: data.isPublic,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
+          roomId: data.roomId,
+          roomTitle: data.roomTitle,
         } as FirebasePixelArt;
       });
     } catch (error) {
@@ -320,7 +326,7 @@ export class PixelArtService {
 
   static async updatePixelArt(
     artworkId: string,
-    data: Partial<Omit<FirebasePixelArt, 'id' | 'createdAt' | 'authorId' | 'authorName' | 'authorEmail' | 'authorNickname'>> & { updatedAt?: any; isDraft?: boolean; isPublic?: boolean; layers?: any[]; canvas?: number[][]; palette?: string[]; user?: User }
+    data: Partial<Omit<FirebasePixelArt, 'id' | 'createdAt' | 'authorId' | 'authorName' | 'authorEmail' | 'authorNickname'>> & { updatedAt?: any; isDraft?: boolean; isPublic?: boolean; layers?: any[]; canvas?: number[][]; palette?: string[]; user?: User; roomId?: string; roomTitle?: string }
   ): Promise<void> {
     try {
       const artworkRef = doc(db, this.COLLECTION_NAME, artworkId);
