@@ -261,7 +261,8 @@ const Editor: React.FC = () => {
         JSON.stringify(prev.canvas) === JSON.stringify(next.canvas) &&
         prev.currentLayer === next.currentLayer &&
         prev.historyIndex === next.historyIndex &&
-        JSON.stringify(prev.palette) === JSON.stringify(next.palette)
+        JSON.stringify(prev.palette) === JSON.stringify(next.palette) &&
+        prev.currentColor === next.currentColor
       ) {
         return prev; // 変化がなければstateを更新しない
       }
