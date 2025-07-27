@@ -59,6 +59,7 @@ export interface EditorState {
   lassoMenuOpen?: boolean;
   lassoMirror?: boolean; // 左右反転中か
   lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
+  roomTitle: string;
 }
 
 export interface FirebasePixelArt {

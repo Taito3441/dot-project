@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, Upload, Eye, EyeOff } from 'lucide-react';
+import { Save, X, Upload, Eye, EyeOff, Clipboard } from 'lucide-react';
 import { Canvas } from '../components/PixelEditor/Canvas';
 import { ColorPalette } from '../components/PixelEditor/ColorPalette';
 import { Toolbar } from '../components/PixelEditor/Toolbar';
@@ -88,6 +88,7 @@ const Editor: React.FC = () => {
       currentLayer: 0,
       showGrid: true,
       backgroundPattern: 'light',
+      roomTitle: '無題',
     };
   });
   // --- Yjs/Y-webrtc同期セットアップ ---
@@ -98,6 +99,9 @@ const Editor: React.FC = () => {
   const isYjsUpdateRef = useRef(false);
   const [backgroundPattern, setBackgroundPattern] = useState<'light' | 'dark'>('light');
   const [showGrid, setShowGrid] = useState(true);
+  const yRoomTitleRef = useRef<Y.Text>();
+  const [localRoomTitle, setLocalRoomTitle] = useState('');
+  const [copyMsg, setCopyMsg] = useState('');
 
   // 初期化（artworkIdが変わるたび）
   useEffect(() => {
@@ -112,8 +116,10 @@ const Editor: React.FC = () => {
     // Yjsで同期するデータ構造
     const yLayers = ydoc.getArray('layers');
     const yCanvasSize = ydoc.getMap('canvasSize');
+    const yRoomTitle = ydoc.getText('roomTitle');
     yLayersRef.current = yLayers;
     yCanvasSizeRef.current = yCanvasSize;
+    yRoomTitleRef.current = yRoomTitle;
 
     // Yjs→React state反映
     const updateFromYjs = () => {
@@ -145,12 +151,29 @@ const Editor: React.FC = () => {
       if (canvasSize.width !== width || canvasSize.height !== height) {
         setCanvasSize({ width, height });
       }
+      // タイトル同期
+      const yTitle = yRoomTitle.toString();
+      if (editorState.roomTitle !== yTitle) {
+        isYjsUpdateRef.current = true;
+        updateEditorState({ roomTitle: yTitle });
+        setLocalRoomTitle(yTitle); // ローカル編集欄も同期
+        isYjsUpdateRef.current = false;
+      }
       isYjsUpdateRef.current = false;
     };
     yLayers.observeDeep(updateFromYjs);
     yCanvasSize.observeDeep(updateFromYjs);
+    yRoomTitle.observe(updateFromYjs);
 
-    // 初回: Yjsが空ならローカルstateをYjsにpush、空でなければ必ずローカルstateをYjsの内容で上書き
+    // 初回: Yjsが空ならローカルstateをYjsにpush（同期完了後に判定）
+    provider.on('synced', (arg0: { synced: boolean }) => {
+      const isSynced = arg0.synced;
+      if (isSynced && yRoomTitle.length === 0 && yRoomTitle.toString().length === 0) {
+        yRoomTitle.insert(0, editorState.roomTitle || '無題');
+      }
+    });
+
+    // 初回: Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
     if (yLayers.length === 0) {
       // editorState.layersをIDで一意化してpush
       const uniqueInitLayers = [];
@@ -196,14 +219,15 @@ const Editor: React.FC = () => {
     return () => {
       yLayers.unobserveDeep(updateFromYjs);
       yCanvasSize.unobserveDeep(updateFromYjs);
+      yRoomTitle.unobserve(updateFromYjs);
       provider.destroy();
       ydoc.destroy();
     };
   }, [artworkId]);
 
-  // React state→Yjs反映（layers/canvasSizeのみ）
+  // React state→Yjs反映（layers/canvasSize/roomTitleのみ）
   useEffect(() => {
-    if (!yLayersRef.current || !yCanvasSizeRef.current) return;
+    if (!yLayersRef.current || !yCanvasSizeRef.current || !yRoomTitleRef.current) return;
     if (isYjsUpdateRef.current) return; // Yjs由来の更新なら何もしない
     // layers
     const yLayers = yLayersRef.current;
@@ -239,7 +263,36 @@ const Editor: React.FC = () => {
     if (yCanvasSize.get('height') !== canvasSize.height) {
       yCanvasSize.set('height', canvasSize.height);
     }
-  }, [editorState.layers, canvasSize]);
+    // roomTitle
+    if (!yRoomTitleRef.current) return;
+    if (isYjsUpdateRef.current) return; // Yjs由来の更新なら何もしない
+    const yRoomTitle = yRoomTitleRef.current;
+    const title = editorState.roomTitle || '無題';
+    if (yRoomTitle.toString() !== title) {
+      yRoomTitle.delete(0, yRoomTitle.length);
+      yRoomTitle.insert(0, title);
+    }
+  }, [editorState.layers, canvasSize, editorState.roomTitle]);
+
+  // 初回: Yjsが空ならinsertせず、UI上で「無題」と表示するだけ
+  useEffect(() => {
+    if (!yRoomTitleRef.current) return;
+    const yRoomTitle = yRoomTitleRef.current;
+    if (yRoomTitle.length === 0 && yRoomTitle.toString().length === 0) {
+      setLocalRoomTitle('');
+    } else {
+      setLocalRoomTitle(yRoomTitle.toString());
+    }
+  }, [yRoomTitleRef.current]);
+
+  // 履歴追加: artworkId/roomTitleが確定したら保存
+  useEffect(() => {
+    if (!artworkId) return;
+    // editorState.roomTitleはYjs同期後に確定するので、roomTitleが空でなければ保存
+    if (editorState.roomTitle && editorState.roomTitle.trim() !== '') {
+      saveRoomHistory(artworkId, editorState.roomTitle);
+    }
+  }, [artworkId, editorState.roomTitle]);
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveData, setSaveData] = useState({ title: '', description: '' });
@@ -265,7 +318,8 @@ const Editor: React.FC = () => {
         prev.historyIndex === next.historyIndex &&
         JSON.stringify(prev.palette) === JSON.stringify(next.palette) &&
         prev.currentColor === next.currentColor &&
-        prev.tool === next.tool
+        prev.tool === next.tool &&
+        prev.roomTitle === next.roomTitle
       ) {
         return prev; // 変化がなければstateを更新しない
       }
@@ -541,12 +595,44 @@ const Editor: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [editorState.historyIndex, editorState.history, editorState.currentLayer]);
 
+  // タイトルUI
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full max-w-5xl mx-auto pt-8 pb-2 px-4">
         <div className="flex flex-row items-baseline gap-6 mb-4">
-          <h1 className="text-3xl font-bold text-gray-900 mb-0">ドット絵エディター</h1>
-          <p className="text-gray-600 text-lg mb-0">プロフェッショナルなツールで素晴らしいドット絵を作成しよう</p>
+          <input
+            className="text-3xl font-bold text-gray-900 mb-0 bg-transparent border-b-2 border-gray-200 focus:border-indigo-400 outline-none px-2 py-1"
+            style={{ minWidth: 120, maxWidth: 400 }}
+            value={localRoomTitle !== '' ? localRoomTitle : (editorState.roomTitle || '無題')}
+            onChange={e => setLocalRoomTitle(e.target.value)}
+            onBlur={() => {
+              if (localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) updateEditorState({ roomTitle: localRoomTitle });
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) {
+                updateEditorState({ roomTitle: localRoomTitle });
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder="無題"
+          />
+          {artworkId && (
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-base text-gray-500 select-all">シリアルコード: <span className="font-mono text-gray-700">{artworkId}</span></span>
+              <button
+                className="ml-2 px-2 py-1 rounded bg-gray-200 hover:bg-indigo-200 text-gray-700 text-sm flex items-center"
+                onClick={() => {
+                  navigator.clipboard.writeText(artworkId);
+                  setCopyMsg('コピーしました');
+                  setTimeout(() => setCopyMsg(''), 1500);
+                }}
+                title="シリアルコードをコピー"
+              >
+                <Clipboard className="w-4 h-4 mr-1" /> コピー
+              </button>
+              {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
+            </div>
+          )}
         </div>
       </div>
       <div className="max-w-full mx-auto px-0 pt-1 pb-8 flex flex-row">
@@ -823,5 +909,23 @@ const Editor: React.FC = () => {
     </div>
   );
 };
+
+// --- ここから履歴管理ユーティリティ ---
+const HISTORY_KEY = 'dotart_room_history';
+function saveRoomHistory(artworkId: string, title: string) {
+  const now = new Date();
+  const lastEdited = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  let history: any[] = [];
+  try {
+    history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch {}
+  // 既存があれば削除
+  history = history.filter(h => h.artworkId !== artworkId);
+  // 先頭に追加
+  history.unshift({ artworkId, title, lastEdited });
+  // 最大20件
+  if (history.length > 20) history = history.slice(0, 20);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
 
 export default Editor;
