@@ -140,53 +140,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
-      {/* History */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">History</h3>
-        <div className="flex space-x-2">
-          <button
-            onClick={undo}
-            disabled={editorState.historyIndex <= 0}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo className="h-4 w-4" />
-          </button>
-          <button
-            onClick={redo}
-            disabled={editorState.historyIndex >= editorState.history.length - 1}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-            title="Redo (Ctrl+Y)"
-          >
-            <Redo className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Zoom */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Zoom</h3>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={zoomOut}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200"
-            title="Zoom Out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <span className="text-sm font-medium text-gray-600 min-w-[3rem] text-center">
-            {Math.round(editorState.zoom * 100)}%
-          </span>
-          <button
-            onClick={zoomIn}
-            className="flex items-center justify-center p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all duration-200"
-            title="Zoom In"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
       {/* Canvas Size Selector */}
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Canvas Size</h3>

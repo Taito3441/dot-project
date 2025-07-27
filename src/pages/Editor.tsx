@@ -597,9 +597,15 @@ const Editor: React.FC = () => {
   }, [editorState.historyIndex, editorState.history, editorState.currentLayer]);
 
   // タイトルUI
+  const COMMON_HEADER_HEIGHT = 64;
+  const EDITOR_HEADER_HEIGHT = 72;
+  const LEFT_SIDEBAR = 260;
+  const RIGHT_SIDEBAR = 380;
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full max-w-5xl mx-auto pt-8 pb-2 px-4">
+    <div style={{ overflow: 'hidden', height: '100vh' }} className="relative w-full h-full">
+      {/* 1. エディタ画面のヘッダー */}
+      <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px' }}>
+        {/* タイトル・シリアルコード・Canvas Size・Grid・Background・Actionsを横並びで配置 */}
         <div className="flex flex-row items-baseline gap-6 mb-4">
           <input
             className="text-3xl font-bold text-gray-900 mb-0 bg-transparent border-b-2 border-gray-200 focus:border-indigo-400 outline-none px-2 py-1"
@@ -636,252 +642,126 @@ const Editor: React.FC = () => {
           )}
         </div>
       </div>
-      <div className="max-w-full mx-auto px-0 pt-1 pb-8 flex flex-row">
-        <div className="w-64 min-w-[220px] max-w-[320px] flex flex-col gap-6 bg-white rounded-xl shadow border p-4 h-fit mt-4 ml-8">
-          <Toolbar
-            editorState={editorState}
-            onStateChange={updateEditorState}
-            onSave={handleSave}
-            onDownload={handleDownload}
-            onClear={handleClear}
-            onCanvasSizeChange={handleCanvasSizeChange}
-            onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
-            backgroundPattern={backgroundPattern}
-            onBackgroundPatternChange={setBackgroundPattern}
-            showGrid={showGrid}
-            onShowGridChange={setShowGrid}
-          />
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-start">
-          <div className="flex items-center justify-center w-full h-full min-h-[800px] flex-col mt-0">
-            <Canvas
-              editorState={editorState}
-              onStateChange={updateEditorState}
-              width={canvasSize.width}
-              height={canvasSize.height}
-              lassoMenuAction={lassoMenuAction as 'copy' | 'delete' | 'move' | null}
-              setLassoMenuAction={setLassoMenuAction as (action: null) => void}
-              backgroundPattern={backgroundPattern}
-              showGrid={showGrid}
-            />
-          </div>
-        </div>
-        <div className="relative" style={{position:'relative', width: '100%', minWidth: '360px', maxWidth: '420px'}}>
-          <div
-            style={{
-              position: 'absolute',
-              left: palettePos.x,
-              top: palettePos.y,
-              zIndex: 9999,
-              cursor: 'grab',
-              userSelect: 'none',
-              width: 380,
-              minWidth: 360,
-              maxWidth: 420,
-              boxShadow: '0 4px 24px 0 rgba(0,0,0,0.08)',
-              borderRadius: 24,
-              background: '#fff',
-              border: '1px solid #e5e7eb',
-              padding: 24,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 24,
-            }}
-            onMouseDown={(e) => {
-              if (e.button !== 1) return;
-              e.preventDefault();
-              const dragStartX = e.clientX;
-              const dragStartY = e.clientY;
-              const startPos = { ...palettePos };
-              const handleMouseMove = (moveEvent: MouseEvent) => {
-                const dx = moveEvent.clientX - dragStartX;
-                const dy = moveEvent.clientY - dragStartY;
-                setPalettePos({ x: startPos.x + dx, y: startPos.y + dy });
-              };
-              const handleMouseUp = (upEvent: MouseEvent) => {
-                if (upEvent.button !== 1) return;
-                window.removeEventListener('mousemove', handleMouseMove);
-                window.removeEventListener('mouseup', handleMouseUp);
-              };
-              window.addEventListener('mousemove', handleMouseMove);
-              window.addEventListener('mouseup', handleMouseUp);
-            }}
-          >
-            <ColorPalette
-              palette={editorState.palette}
-              currentColor={editorState.currentColor}
-              onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
-              onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
-            />
-            <div className="w-full" style={{marginTop: 16}}>
-              <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
-                {editorState.layers.slice().reverse().map((layer, revIdx) => {
-                  const idx = editorState.layers.length - 1 - revIdx;
-                  return (
-                    <div
-                      key={layer.id}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
-                        ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'}`}
-                      onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
-                    >
-                      <button
-                        className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-colors duration-150 \
-                          ${layer.visible ? 'border-green-400 bg-green-50 text-green-600' : 'border-gray-300 bg-gray-100 text-gray-400'}`}
-                        title={layer.visible ? '表示中' : '非表示'}
-                        onClick={e => {
-                          e.stopPropagation();
-                          const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, visible: !l.visible } : l);
-                          updateEditorState({ layers: newLayers });
-                        }}
-                      >
-                        {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                      </button>
-                      <input
-                        className="w-24 px-1 py-0.5 rounded border border-gray-200 text-sm bg-transparent focus:border-indigo-400"
-                        value={layer.name}
-                        onChange={e => {
-                          e.stopPropagation();
-                          const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, name: e.target.value } : l);
-                          updateEditorState({ layers: newLayers });
-                        }}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      {editorState.layers.length > 1 && (
-                        <button
-                          className="ml-1 text-red-400 hover:text-red-600"
-                          title="レイヤー削除"
-                          onClick={e => {
-                            e.stopPropagation();
-                            const newLayers = editorState.layers.filter((_, i) => i !== idx);
-                            let newCurrent = editorState.currentLayer;
-                            if (newCurrent >= newLayers.length) newCurrent = newLayers.length - 1;
-                            updateEditorState({ layers: newLayers, currentLayer: newCurrent, canvas: newLayers[newCurrent].canvas });
-                          }}
-                        >✕</button>
-                      )}
-                      <div className="flex items-center gap-1 w-28">
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={layer.opacity}
-                          onChange={e => {
-                            const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
-                            updateEditorState({ layers: newLayers });
-                          }}
-                          className="w-20 accent-indigo-500"
-                        />
-                        <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                <button
-                  className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold w-full"
-                  onClick={() => {
-                    const newLayer: Layer = {
-                      id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`,
-                      name: `レイヤー ${editorState.layers.length + 1}`,
-                      canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
-                      opacity: 1,
-                      visible: true,
-                    };
-                    updateEditorState({ layers: [...editorState.layers, newLayer], currentLayer: editorState.layers.length });
-                  }}
-                >＋レイヤー追加</button>
-              </div>
-            </div>
+      {/* 2. 左サイドバー */}
+      <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+        <Toolbar
+          editorState={editorState}
+          onStateChange={updateEditorState}
+          onSave={handleSave}
+          onDownload={handleDownload}
+          onClear={handleClear}
+          onCanvasSizeChange={handleCanvasSizeChange}
+          onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
+          backgroundPattern={backgroundPattern}
+          onBackgroundPatternChange={setBackgroundPattern}
+          showGrid={showGrid}
+          onShowGridChange={setShowGrid}
+        />
+      </div>
+      {/* 3. 右サイドバー */}
+      <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+        <ColorPalette
+          palette={editorState.palette}
+          currentColor={editorState.currentColor}
+          onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
+          onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
+        />
+        {/* レイヤー管理UIもここに移動 */}
+        <div className="w-full" style={{marginTop: 16, width: 380, minWidth: 380, maxWidth: 380}}>
+          <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
+            {editorState.layers.slice().reverse().map((layer, revIdx) => {
+              const idx = editorState.layers.length - 1 - revIdx;
+              return (
+                <div
+                  key={layer.id}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 select-none \
+                    ${editorState.currentLayer === idx ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:border-indigo-300'}`}
+                  onClick={() => updateEditorState({ currentLayer: idx, canvas: editorState.layers[idx].canvas })}
+                >
+                  <button
+                    className={`w-6 h-6 flex items-center justify-center rounded-full border-2 transition-colors duration-150 \
+                      ${layer.visible ? 'border-green-400 bg-green-50 text-green-600' : 'border-gray-300 bg-gray-100 text-gray-400'}`}
+                    title={layer.visible ? '表示中' : '非表示'}
+                    onClick={e => {
+                      e.stopPropagation();
+                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, visible: !l.visible } : l);
+                      updateEditorState({ layers: newLayers });
+                    }}
+                  >
+                    {layer.visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                  <input
+                    className="w-24 px-1 py-0.5 rounded border border-gray-200 text-sm bg-transparent focus:border-indigo-400"
+                    value={layer.name}
+                    onChange={e => {
+                      e.stopPropagation();
+                      const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, name: e.target.value } : l);
+                      updateEditorState({ layers: newLayers });
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                  {editorState.layers.length > 1 && (
+                    <button
+                      className="ml-1 text-red-400 hover:text-red-600"
+                      title="レイヤー削除"
+                      onClick={e => {
+                        e.stopPropagation();
+                        const newLayers = editorState.layers.filter((_, i) => i !== idx);
+                        let newCurrent = editorState.currentLayer;
+                        if (newCurrent >= newLayers.length) newCurrent = newLayers.length - 1;
+                        updateEditorState({ layers: newLayers, currentLayer: newCurrent, canvas: newLayers[newCurrent].canvas });
+                      }}
+                    >✕</button>
+                  )}
+                  <div className="flex items-center gap-1 w-28">
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={layer.opacity}
+                      onChange={e => {
+                        const newLayers = editorState.layers.map((l, i) => i === idx ? { ...l, opacity: parseFloat(e.target.value) } : l);
+                        updateEditorState({ layers: newLayers });
+                      }}
+                      className="w-20 accent-indigo-500"
+                    />
+                    <span className="text-xs w-6 text-right">{Math.round(layer.opacity * 100)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              className="mt-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-500 bg-indigo-50 hover:bg-indigo-100 font-bold w-full"
+              onClick={() => {
+                const newLayer: Layer = {
+                  id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`,
+                  name: '新しいレイヤー',
+                  canvas: createEmptyCanvas(canvasSize.width, canvasSize.height),
+                  opacity: 1,
+                  visible: true,
+                };
+                updateEditorState({ layers: [...editorState.layers, newLayer] });
+              }}
+            >
+              レイヤーを追加
+            </button>
           </div>
         </div>
       </div>
-
-      {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">作品を投稿</h3>
-              <button
-                onClick={() => setShowSaveDialog(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                disabled={isUploading}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  タイトル *
-                </label>
-                <input
-                  type="text"
-                  value={saveData.title}
-                  onChange={(e) => setSaveData(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="作品のタイトルを入力"
-                  disabled={isUploading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  説明
-                </label>
-                <textarea
-                  value={saveData.description}
-                  onChange={(e) => setSaveData(prev => ({ ...prev, description: e.target.value }))}
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="作品の説明（任意）"
-                  disabled={isUploading}
-                />
-              </div>
-            </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={() => setShowSaveDialog(false)}
-                disabled={isUploading}
-                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200 disabled:opacity-50"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleSaveConfirm}
-                disabled={!saveData.title || isUploading}
-                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-              >
-                {isUploading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    保存中...
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 inline mr-2" />
-                    投稿する
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 投稿完了ダイアログ */}
-      {showPostComplete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-xs flex flex-col items-center">
-            <div className="text-2xl mb-4">🎉</div>
-            <div className="text-lg font-semibold mb-2">投稿が完了しました！</div>
-            <button
-              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-              onClick={() => setShowPostComplete(false)}
-            >OK</button>
-          </div>
-        </div>
-      )}
+      {/* 4. 中央エリア */}
+      <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: LEFT_SIDEBAR, marginRight: RIGHT_SIDEBAR, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
+        <Canvas
+          editorState={editorState}
+          onStateChange={updateEditorState}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          lassoMenuAction={lassoMenuAction as 'copy' | 'delete' | 'move' | null}
+          setLassoMenuAction={setLassoMenuAction as (action: null) => void}
+          backgroundPattern={backgroundPattern}
+          showGrid={showGrid}
+        />
+      </div>
     </div>
   );
 };

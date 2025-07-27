@@ -975,12 +975,25 @@ export const Canvas: React.FC<CanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lassoMode, lassoSelections, lassoDragOffset, editorState.layers, editorState.currentLayer]);
 
+  // 1. handleWheel関数を追加
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    let newZoom = editorState.zoom;
+    if (e.deltaY < 0) {
+      newZoom = Math.min(editorState.zoom * 1.1, 8); // 最大8倍
+    } else {
+      newZoom = Math.max(editorState.zoom / 1.1, 0.1); // 最小0.1倍
+    }
+    onStateChange({ zoom: newZoom });
+  };
+
   return (
     <div
       className="flex items-center justify-center p-0 bg-transparent border-none select-none"
       onMouseMove={handlePanMouseMove}
       onMouseUp={handlePanMouseUp}
       onMouseLeave={handlePanMouseUp}
+      onWheel={handleWheel}
       style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : editorState.tool === 'move' ? 'move' : undefined }}
     >
       <div
