@@ -59,6 +59,7 @@ export interface EditorState {
   lassoMenuOpen?: boolean;
   lassoMirror?: boolean; // 左右反転中か
   lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
+  roomTitle: string;
 }
 
 export interface FirebasePixelArt {
@@ -82,6 +83,8 @@ export interface FirebasePixelArt {
   likedUserIds?: string[];
   isDraft?: boolean;
   layers?: LayerFirestore[]; // Firestore保存用
+  roomId?: string; // 追加: ルームID（シリアルコード）
+  roomTitle?: string; // 追加: ルームタイトル
 }
 
 export interface ChatGPTIntegration {
