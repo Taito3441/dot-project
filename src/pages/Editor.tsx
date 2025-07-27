@@ -96,6 +96,8 @@ const Editor: React.FC = () => {
   const yLayersRef = useRef<Y.Array<any>>();
   const yCanvasSizeRef = useRef<Y.Map<any>>();
   const isYjsUpdateRef = useRef(false);
+  const [backgroundPattern, setBackgroundPattern] = useState<'light' | 'dark'>('light');
+  const [showGrid, setShowGrid] = useState(true);
 
   // 初期化（artworkIdが変わるたび）
   useEffect(() => {
@@ -558,6 +560,10 @@ const Editor: React.FC = () => {
             onClear={handleClear}
             onCanvasSizeChange={handleCanvasSizeChange}
             onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
+            backgroundPattern={backgroundPattern}
+            onBackgroundPatternChange={setBackgroundPattern}
+            showGrid={showGrid}
+            onShowGridChange={setShowGrid}
           />
         </div>
         <div className="flex-1 flex flex-col items-center justify-start">
@@ -569,6 +575,8 @@ const Editor: React.FC = () => {
               height={canvasSize.height}
               lassoMenuAction={lassoMenuAction as 'copy' | 'delete' | 'move' | null}
               setLassoMenuAction={setLassoMenuAction as (action: null) => void}
+              backgroundPattern={backgroundPattern}
+              showGrid={showGrid}
             />
           </div>
         </div>

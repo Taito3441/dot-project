@@ -10,6 +10,8 @@ interface CanvasProps {
   height: number;
   lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
   setLassoMenuAction?: (action: null) => void;
+  backgroundPattern: 'light' | 'dark';
+  showGrid: boolean;
 }
 
 type Layer = {
@@ -29,6 +31,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   height,
   lassoMenuAction,
   setLassoMenuAction,
+  backgroundPattern,
+  showGrid,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -99,7 +103,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     drawCanvas();
-  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, editorState.showGrid, editorState.backgroundPattern]);
+  }, [editorState.canvas, editorState.palette, pixelSize, editorState.layers, editorState.currentLayer, showGrid, backgroundPattern]);
 
   useEffect(() => {
     currentLassoRef.current = currentLassoRef.current;
@@ -307,9 +311,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // Draw background grid (市松模様)
     const gridSize = Math.max(4, Math.floor(pixelSize / 3));
-    const isDark = editorState.backgroundPattern === 'dark';
-    const colorA = isDark ? '#222' : '#f3f4f6';
-    const colorB = isDark ? '#444' : '#e5e7eb';
+    const isDark = backgroundPattern === 'dark';
+    const colorA = isDark ? '#111' : '#f3f4f6';
+    const colorB = isDark ? '#222' : '#e5e7eb';
     for (let y = 0; y < canvasHeight; y += gridSize) {
       for (let x = 0; x < canvasWidth; x += gridSize) {
         ctx.fillStyle = ((x / gridSize + y / gridSize) % 2 === 0) ? colorA : colorB;
@@ -318,7 +322,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     // Draw grid lines
-    if (editorState.showGrid) {
+    if (showGrid) {
       ctx.strokeStyle = editorState.backgroundPattern === 'dark' ? '#fff' : '#000';
       ctx.lineWidth = 0.25;
       for (let x = 0; x <= width; x++) {

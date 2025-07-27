@@ -12,6 +12,10 @@ interface ToolbarProps {
   onClear: () => void;
   onCanvasSizeChange: (width: number, height: number) => void;
   onLassoMenuAction?: (action: 'copy' | 'delete' | 'move') => void;
+  backgroundPattern: 'light' | 'dark';
+  onBackgroundPatternChange: (pattern: 'light' | 'dark') => void;
+  showGrid: boolean;
+  onShowGridChange: (show: boolean) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -23,6 +27,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClear,
   onCanvasSizeChange,
   onLassoMenuAction,
+  backgroundPattern,
+  onBackgroundPatternChange,
+  showGrid,
+  onShowGridChange,
 }) => {
   const [lassoMenuOpen, setLassoMenuOpen] = useState(false);
   const tools = [
@@ -208,8 +216,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="relative inline-block w-12 h-7 align-middle select-none">
               <input
                 type="checkbox"
-                checked={editorState.showGrid}
-                onChange={e => onStateChange({ showGrid: e.target.checked })}
+                checked={showGrid}
+                onChange={e => onShowGridChange(e.target.checked)}
                 className="sr-only peer"
               />
               <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
@@ -228,8 +236,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <span className="relative inline-block w-12 h-7 align-middle select-none">
               <input
                 type="checkbox"
-                checked={editorState.backgroundPattern === 'dark'}
-                onChange={e => onStateChange({ backgroundPattern: e.target.checked ? 'dark' : 'light' })}
+                checked={backgroundPattern === 'dark'}
+                onChange={e => onBackgroundPatternChange(e.target.checked ? 'dark' : 'light')}
                 className="sr-only peer"
               />
               <span className="block w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-indigo-900 transition" />
