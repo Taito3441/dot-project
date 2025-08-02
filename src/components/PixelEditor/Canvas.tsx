@@ -301,6 +301,9 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const drawCanvas = () => {
+    if (!editorState.layers || editorState.layers.length === 0) return;
+    const layer = editorState.layers[editorState.currentLayer];
+    if (!layer || !layer.canvas || !Array.isArray(layer.canvas) || !Array.isArray(layer.canvas[0])) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
@@ -821,6 +824,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // ローカルのcanvasを即時再描画
     drawCanvas();
+    // --- ここでonStateChangeは呼ばない（マウスアップ時のみ同期）---
   };
 
   // --- コピー確定処理 ---
@@ -902,10 +906,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     setIsDrawing(false);
     setDragStart(null);
     // React状態に反映
+    // すべてのレイヤーを新しい参照で返す
     const newLayers = editorState.layers.map((l, i) =>
-      i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+      i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : { ...l, canvas: l.canvas.map(row => [...row]) }
     );
-    onStateChange({ layers: newLayers });
+    onStateChange({ layers: newLayers }); // ここでのみ同期
     saveToHistory();
     // コピー確定はEnter/ダブルクリックのみ
   };
