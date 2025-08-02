@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Save, X, Upload, Eye, EyeOff, Clipboard } from 'lucide-react';
+import { Eye, EyeOff, Clipboard } from 'lucide-react'
 import { Canvas } from '../components/PixelEditor/Canvas';
 import { ColorPalette } from '../components/PixelEditor/ColorPalette';
 import { Toolbar } from '../components/PixelEditor/Toolbar';
@@ -7,8 +7,7 @@ import { EditorState, Layer } from '../types';
 import { createEmptyCanvas, getDefaultPalette, downloadCanvas, resizeCanvas } from '../utils/pixelArt';
 import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
-import type { ColorPaletteProps } from '../components/PixelEditor/ColorPalette';
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { isDrawingRef } from '../components/PixelEditor/Canvas';
@@ -64,10 +63,12 @@ function mergeLayers(layers: Layer[], palette: string[], width: number, height: 
 const AUTO_SAVE_INTERVAL = 30000; // 30秒
 
 const Editor: React.FC = () => {
+  // すべてのフックを最上部で宣言
   const { isAuthenticated, user } = useAuth();
   const { artworkId } = useParams<{ artworkId: string }>();
+  const navigate = useNavigate();
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 32, height: 32 });
-  const [editorState, setEditorState] = useState<EditorState>(() => {
+  const initialEditorState = () => {
     const initialCanvas = createEmptyCanvas(32, 32);
     const initialLayer: Layer = {
       id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`,
@@ -80,18 +81,18 @@ const Editor: React.FC = () => {
       canvas: initialCanvas,
       palette: getDefaultPalette(),
       currentColor: 1,
-      tool: 'brush',
+      tool: 'brush' as const,
       zoom: 1.2,
       history: [[{ ...initialLayer, canvas: initialCanvas.map(row => [...row]) }]],
       historyIndex: 0,
       layers: [initialLayer],
       currentLayer: 0,
       showGrid: true,
-      backgroundPattern: 'light',
+      backgroundPattern: 'light' as const,
       roomTitle: '無題',
     };
-  });
-  // --- Yjs/Y-webrtc同期セットアップ ---
+  };
+  const [editorState, setEditorState] = useState<EditorState>(initialEditorState);
   const ydocRef = useRef<Y.Doc>();
   const providerRef = useRef<WebrtcProvider>();
   const yLayersRef = useRef<Y.Array<any>>();
@@ -102,15 +103,36 @@ const Editor: React.FC = () => {
   const yRoomTitleRef = useRef<Y.Text>();
   const [localRoomTitle, setLocalRoomTitle] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveData, setSaveData] = useState({ title: '', description: '' });
+  const [isUploading, setIsUploading] = useState(false);
+  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
+  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
+  const [showPostComplete, setShowPostComplete] = useState(false);
 
-  // 初期化（artworkIdが変わるたび）
+  // 新規作成時はリダイレクト
+  useEffect(() => {
+    if (!artworkId) {
+      const newId = `room-${Date.now()}-${Math.floor(Math.random()*100000)}`;
+      navigate(`/editor/${newId}`, { replace: true });
+    }
+  }, [artworkId, navigate]);
+
+  // Yjsや状態初期化のuseEffectはartworkIdが存在する場合のみ
   useEffect(() => {
     if (!artworkId) return;
+    // Provider初期化直前にartworkIdを出力
+    console.log('Joining Yjs room:', artworkId);
     // YjsドキュメントとProvider初期化
     const ydoc = new Y.Doc();
     const provider = new WebrtcProvider(artworkId, ydoc, {
       signaling: ['wss://pixelshare.fly.dev'], // fly.ioのURLに合わせてください
     });
+    // デバッグ: Yjsのネットワーク状態を出力
+    provider.on('status', e => console.log('Yjs status:', e.connected));
+    provider.on('peers', e => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
     ydocRef.current = ydoc;
     providerRef.current = provider;
     // Yjsで同期するデータ構造
@@ -123,7 +145,7 @@ const Editor: React.FC = () => {
 
     // Yjs→React state反映
     const updateFromYjs = () => {
-      if (isDrawingRef.current) return; // ドラッグ中はlayers上書きをスキップ
+      if (isDrawingRef.current) return;
       isYjsUpdateRef.current = true;
       const layersRaw = yLayers.toArray();
       const seen = new Set<string>();
@@ -144,41 +166,87 @@ const Editor: React.FC = () => {
       const heightRaw = yCanvasSize.get('height');
       const width = typeof widthRaw === 'number' ? widthRaw : 32;
       const height = typeof heightRaw === 'number' ? heightRaw : 32;
-      // 変更がある場合のみstateを更新
-      if (JSON.stringify(editorState.layers) !== JSON.stringify(layers)) {
-        updateEditorState({ layers });
-      }
+      const yTitle = yRoomTitle.toString();
+      setEditorState(prev => {
+        let changed = false;
+        let next = { ...prev };
+        if (JSON.stringify(prev.layers) !== JSON.stringify(layers)) {
+          next.layers = layers;
+          changed = true;
+        }
+        if (prev.roomTitle !== yTitle) {
+          next.roomTitle = yTitle;
+          setLocalRoomTitle(yTitle);
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
       if (canvasSize.width !== width || canvasSize.height !== height) {
         setCanvasSize({ width, height });
       }
-      // タイトル同期
-      const yTitle = yRoomTitle.toString();
-      if (editorState.roomTitle !== yTitle) {
-        isYjsUpdateRef.current = true;
-        updateEditorState({ roomTitle: yTitle });
-        setLocalRoomTitle(yTitle); // ローカル編集欄も同期
+      setTimeout(() => {
         isYjsUpdateRef.current = false;
-      }
-      isYjsUpdateRef.current = false;
+      }, 0);
     };
     yLayers.observeDeep(updateFromYjs);
     yCanvasSize.observeDeep(updateFromYjs);
     yRoomTitle.observe(updateFromYjs);
 
-    // 初回: Yjsが空ならローカルstateをYjsにpush（同期完了後に判定）
-    provider.on('synced', (arg0: { synced: boolean }) => {
+    let didInit = false;
+    provider.on('synced', async (arg0: { synced: boolean }) => {
+      if (didInit) return;
+      didInit = true;
       const isSynced = arg0.synced;
-      if (isSynced && yRoomTitle.length === 0 && yRoomTitle.toString().length === 0) {
-        yRoomTitle.insert(0, editorState.roomTitle || '無題');
+      if (isSynced) {
+        const yLayersArr = yLayers.toArray();
+        const isAllZero = yLayersArr.length === 0 || yLayersArr.every(l => {
+          const layer = l as any;
+          if (Array.isArray(layer.canvas)) {
+            const flat = layer.canvas.flat ? layer.canvas.flat() : layer.canvas;
+            return flat.every((v: number) => v === 0);
+          }
+          return true;
+        });
+        if (isAllZero) {
+          while (yLayers.length > 0) yLayers.delete(0, 1);
+          const latest = await PixelArtService.getLatestState(artworkId);
+          if (latest && latest.layers && latest.layers.length > 0) {
+            const layers: Layer[] = (latest.layers as import('../types').LayerFirestore[]).map((l: import('../types').LayerFirestore) => ({
+              ...l,
+              canvas: PixelArtService.reshapeCanvas(l.canvas, latest.width, latest.height) as number[][]
+            }));
+            for (const layer of layers.slice(0, latest.layersCount || layers.length)) {
+              yLayers.push([layer]);
+            }
+            yCanvasSize.set('width', latest.width);
+            yCanvasSize.set('height', latest.height);
+            yRoomTitle.insert(0, latest.roomTitle || '無題');
+            updateFromYjs();
+          } else {
+            while (yLayers.length > 0) yLayers.delete(0, 1);
+            const initState = initialEditorState();
+            yLayers.push([{
+              ...initState.layers[0],
+              canvas: initState.layers[0].canvas.flat(),
+            }]);
+            yCanvasSize.set('width', initState.canvas[0].length);
+            yCanvasSize.set('height', initState.canvas.length);
+            yRoomTitle.insert(0, initState.roomTitle);
+            updateFromYjs();
+          }
+        }
+        // それ以外はYjsの内容でeditorStateを初期化（updateFromYjsが走る）
       }
     });
 
     // 初回: Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
     if (yLayers.length === 0) {
+      const initState = initialEditorState();
+      setEditorState(initState);
       // editorState.layersをIDで一意化してpush
       const uniqueInitLayers = [];
       const seenInit = new Set();
-      for (const l of editorState.layers) {
+      for (const l of initState.layers) {
         if (!seenInit.has(l.id)) {
           uniqueInitLayers.push(l);
           seenInit.add(l.id);
@@ -217,6 +285,30 @@ const Editor: React.FC = () => {
     updateFromYjs();
     // クリーンアップ
     return () => {
+      // クリーンアップ時にFirestoreへ最新状態を保存（Yjsの内容を直接参照）
+      if (artworkId && yLayersRef.current && yCanvasSizeRef.current) {
+        const yLayers = yLayersRef.current;
+        const yCanvasSize = yCanvasSizeRef.current;
+        const layersRaw = yLayers.toArray();
+        const layers = layersRaw.map((l: any) => ({
+          id: l.id,
+          name: l.name,
+          canvas: Array.isArray(l.canvas) ? l.canvas.flat() : [],
+          opacity: l.opacity,
+          visible: l.visible,
+        }));
+        if (layers.length && !layers.every(l => l.canvas.every((v: number) => v === 0))) {
+          const data = {
+            layers,
+            width: yCanvasSize.get('width') || 32,
+            height: yCanvasSize.get('height') || 32,
+            palette: editorState.palette,
+            roomTitle: editorState.roomTitle,
+            layersCount: layers.length, // レイヤー総数を追加
+          };
+          PixelArtService.saveLatestState(artworkId, data);
+        }
+      }
       yLayers.unobserveDeep(updateFromYjs);
       yCanvasSize.unobserveDeep(updateFromYjs);
       yRoomTitle.unobserve(updateFromYjs);
@@ -225,14 +317,14 @@ const Editor: React.FC = () => {
     };
   }, [artworkId]);
 
-  // React state→Yjs反映（layers/canvasSize/roomTitleのみ）
+  // React state→Yjs反映（layers/roomTitleのみ）
   useEffect(() => {
-    if (!yLayersRef.current || !yCanvasSizeRef.current || !yRoomTitleRef.current) return;
-    if (isYjsUpdateRef.current) return; // Yjs由来の更新なら何もしない
-    // layers
+    if (isYjsUpdateRef.current) return;
+    if (!yLayersRef.current || !yRoomTitleRef.current) return;
     const yLayers = yLayersRef.current;
+    const yRoomTitle = yRoomTitleRef.current;
+    // layers
     const layers = editorState.layers;
-    // Yjs側のIDリスト
     const yLayerArr = yLayers.toArray();
     const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
     // 追加・更新
@@ -242,8 +334,10 @@ const Editor: React.FC = () => {
         yLayers.push([l]);
       } else {
         // update: 既存レイヤーを置き換え
-        yLayers.delete(idx, 1);
-        yLayers.insert(idx, [l]);
+        if (JSON.stringify((yLayerArr as Layer[])[idx]) !== JSON.stringify(l)) {
+          yLayers.delete(idx, 1);
+          yLayers.insert(idx, [l]);
+        }
       }
     });
     // Yjsにしかないレイヤーは削除
@@ -255,24 +349,13 @@ const Editor: React.FC = () => {
     });
     toDelete.sort((a, b) => b - a); // 降順
     toDelete.forEach(idx => yLayers.delete(idx, 1));
-    // canvasSize
-    const yCanvasSize = yCanvasSizeRef.current;
-    if (yCanvasSize.get('width') !== canvasSize.width) {
-      yCanvasSize.set('width', canvasSize.width);
-    }
-    if (yCanvasSize.get('height') !== canvasSize.height) {
-      yCanvasSize.set('height', canvasSize.height);
-    }
-    // roomTitle
-    if (!yRoomTitleRef.current) return;
-    if (isYjsUpdateRef.current) return; // Yjs由来の更新なら何もしない
-    const yRoomTitle = yRoomTitleRef.current;
+    // roomTitle（違うときだけdelete→insert）
     const title = editorState.roomTitle || '無題';
     if (yRoomTitle.toString() !== title) {
       yRoomTitle.delete(0, yRoomTitle.length);
       yRoomTitle.insert(0, title);
     }
-  }, [editorState.layers, canvasSize, editorState.roomTitle]);
+  }, [editorState.layers, editorState.roomTitle]);
 
   // 初回: Yjsが空ならinsertせず、UI上で「無題」と表示するだけ
   useEffect(() => {
@@ -294,17 +377,45 @@ const Editor: React.FC = () => {
     }
   }, [artworkId, editorState.roomTitle]);
 
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [saveData, setSaveData] = useState({ title: '', description: '' });
-  const [isUploading, setIsUploading] = useState(false);
-  // カラーパレットの座標を管理
-  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
-  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
-  const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
+  // ルームに入った時点で履歴に追加（タイトルは現時点のもの or 無題）
+  useEffect(() => {
+    if (!artworkId) return;
+    saveRoomHistory(artworkId, editorState.roomTitle || '無題');
+  }, [artworkId]);
 
-  // 投稿完了ダイアログ用の状態
-  const [showPostComplete, setShowPostComplete] = useState(false);
+  // キャンバス編集時（editorState.layers, editorState.roomTitle, canvasSize, paletteが変化したとき）にPixelArtService.saveLatestStateを呼び、最新編集状態をFirestoreに保存するuseEffectを追加します。
+  useEffect(() => {
+    if (!artworkId) return;
+    // Firestoreに最新編集状態を保存（厳密バリデーション）
+    const safeLayers = (Array.isArray(editorState.layers) ? editorState.layers : [])
+      .filter(Boolean)
+      .map(l => ({
+        id: l.id, // 既存IDを必ず維持
+        name: typeof l.name === 'string' ? l.name : '',
+        canvas: Array.isArray(l.canvas)
+          ? l.canvas.flat().map(v => (typeof v === 'number' && isFinite(v) ? v : 0))
+          : Array(canvasSize.width * canvasSize.height).fill(0),
+        opacity: typeof l.opacity === 'number' && isFinite(l.opacity) ? l.opacity : 1,
+        visible: typeof l.visible === 'boolean' ? l.visible : true,
+      }));
+    // canvasが全て0や空の場合は保存をスキップ
+    if (!safeLayers.length || safeLayers.every(l => l.canvas.every(v => v === 0))) {
+      return;
+    }
+    const safePalette = Array.isArray(editorState.palette)
+      ? editorState.palette.filter(c => typeof c === 'string' && c)
+      : getDefaultPalette();
+    const data = {
+      layers: safeLayers,
+      width: typeof canvasSize.width === 'number' && isFinite(canvasSize.width) ? canvasSize.width : 32,
+      height: typeof canvasSize.height === 'number' && isFinite(canvasSize.height) ? canvasSize.height : 32,
+      palette: safePalette,
+      roomTitle: typeof editorState.roomTitle === 'string' ? editorState.roomTitle : '無題',
+      layersCount: safeLayers.length, // レイヤー総数を追加
+    };
+    console.log('saveLatestState data', data);
+    PixelArtService.saveLatestState(artworkId, data);
+  }, [artworkId, editorState.layers, editorState.roomTitle, canvasSize.width, canvasSize.height, editorState.palette]);
 
   const updateEditorState = (newState: Partial<EditorState>) => {
     setEditorState(prev => {
@@ -349,7 +460,6 @@ const Editor: React.FC = () => {
 
   const handleSaveConfirm = async () => {
     if (!user) return;
-    setIsUploading(true);
     try {
       const merged = mergeLayers(
         editorState.layers,
@@ -357,49 +467,24 @@ const Editor: React.FC = () => {
         canvasSize.width,
         canvasSize.height
       );
-      if (artworkId) {
-        // 既存作品の上書き保存
-        const safeLayers = editorState.layers
-          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
-          .map(l => ({ ...l, canvas: l.canvas.flat() }));
-        await PixelArtService.updatePixelArt(artworkId, {
-          title: saveData.title || 'Untitled',
-          description: saveData.description || '',
-          pixelData: merged,
-          width: canvasSize.width,
-          height: canvasSize.height,
-          palette: editorState.palette,
-          isDraft: false,
-          isPublic: true,
-          layers: safeLayers as any,
-          canvas: merged,
-          user,
-          roomId: artworkId,
-          roomTitle: editorState.roomTitle || '無題',
-        });
-        setShowSaveDialog(false);
-        setSaveData({ title: '', description: '' });
-        setShowPostComplete(true);
-      } else {
-        // 新規作成
-        const safeLayers = editorState.layers
-          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
-          .map(l => ({ ...l, canvas: l.canvas.flat() }));
-        await PixelArtService.uploadPixelArt(
-          saveData.title || 'Untitled',
-          saveData.description || '',
-          merged,
-          editorState.palette,
-          user,
-          false, // isDraft: false
-          safeLayers as any,
-          artworkId,
-          editorState.roomTitle || '無題'
-        );
-        setShowSaveDialog(false);
-        setSaveData({ title: '', description: '' });
-        setShowPostComplete(true);
-      }
+      const safeLayers = editorState.layers
+        .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+        .map(l => ({ ...l, canvas: l.canvas.flat() }));
+      // 必ず新規投稿（addDoc）
+      await PixelArtService.uploadPixelArt(
+        saveData.title || 'Untitled',
+        saveData.description || '',
+        merged,
+        editorState.palette,
+        user,
+        false, // isDraft: false
+        safeLayers as any,
+        artworkId,
+        editorState.roomTitle || '無題'
+      );
+      setShowSaveDialog(false);
+      setSaveData({ title: '', description: '' });
+      setShowPostComplete(true);
     } catch (e) {
       alert('保存に失敗しました');
     } finally {
@@ -447,91 +532,14 @@ const Editor: React.FC = () => {
   };
 
   // 自動保存関数
-  const autoSave = async () => {
-    if (!user) return;
-    const merged = mergeLayers(
-      editorState.layers,
-      editorState.palette,
-      canvasSize.width,
-      canvasSize.height
-    );
-    try {
-      const safeLayers = editorState.layers
-        .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
-        .map(l => ({ ...l, canvas: l.canvas.flat() }));
-      if (artworkId) {
-        // 既存作品の上書き保存
-        await PixelArtService.updatePixelArt(artworkId, {
-          title: saveData.title || 'Untitled',
-          description: saveData.description || '',
-          pixelData: merged,
-          width: canvasSize.width,
-          height: canvasSize.height,
-          palette: editorState.palette,
-          isDraft: false,
-          isPublic: true,
-          canvas: merged,
-          user,
-          layers: safeLayers as any,
-          roomId: artworkId,
-          roomTitle: editorState.roomTitle || '無題',
-        });
-      } else {
-        // 新規作成（初回のみ）
-        const newId = await PixelArtService.uploadPixelArt(
-          saveData.title || 'Untitled',
-          saveData.description || '',
-          merged,
-          editorState.palette,
-          user,
-          false, // isDraft
-          safeLayers as any,
-          artworkId,
-          editorState.roomTitle || '無題'
-        );
-        // artworkIdをセットして以降は上書き保存
-        // setArtworkId(newId); // artworkIdはuseParamsで管理
-      }
-      setLastAutoSave(Date.now());
-    } catch (e) {
-      // エラーは無視（UIには表示しない）
-    }
-  };
-
-  useEffect(() => {
-    if (!artworkId || !user) return;
-    // 既存作品のロード
-    PixelArtService.getUserArtworks(user.id).then(arts => {
-      const art = arts.find(a => a.id === artworkId);
-      if (art) {
-        setSaveData({ title: art.title, description: art.description || '' });
-        setCanvasSize({ width: art.width, height: art.height });
-        // レイヤー情報を完全復元（canvasは必ず二次元配列に）
-        let layers: Layer[];
-        if (art.layers && Array.isArray(art.layers) && art.layers.length > 0) {
-          layers = art.layers.map(l => ({ ...l, canvas: PixelArtService.reshapeCanvas(l.canvas, art.width, art.height) }));
-        } else {
-          layers = [{ id: `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`, name: 'レイヤー 1', canvas: art.pixelData || createEmptyCanvas(art.width || 32, art.height || 32), opacity: 1, visible: true }];
-        }
-        setEditorState(prev => ({
-          ...prev,
-          canvas: layers[0]?.canvas || createEmptyCanvas(32, 32),
-          palette: art.palette,
-          layers,
-          currentLayer: 0,
-          history: [layers.map(l => ({ ...l, canvas: l.canvas?.map(row => [...row]) || createEmptyCanvas(32, 32) }))],
-          historyIndex: 0,
-        }));
-      }
-    });
-  }, [artworkId, user]);
+  // 自動保存(autoSave)やupdatePixelArtの呼び出しは削除
 
   // エディターステートが変化したら自動保存タイマーをリセット
   useEffect(() => {
     if (!user) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
-      autoSave();
+      // 自動保存(autoSave)やupdatePixelArtの呼び出しは削除
     }, AUTO_SAVE_INTERVAL);
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
@@ -762,9 +770,75 @@ const Editor: React.FC = () => {
           showGrid={showGrid}
         />
       </div>
+      {/* 投稿完了ダイアログ */}
+      {showPostComplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center">
+            <div className="text-2xl font-bold mb-2">投稿が完了しました！</div>
+            <div className="mb-4 text-gray-600">ギャラリーで公開されました。</div>
+            <div className="flex gap-4">
+              <button
+                className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
+                onClick={() => {
+                  setShowPostComplete(false);
+                }}
+              >
+                閉じる
+              </button>
+              <button
+                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                onClick={() => {
+                  setShowPostComplete(false);
+                  navigate('/mypage');
+                }}
+              >
+                ギャラリーへ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 投稿入力ダイアログ */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center min-w-[320px]">
+            <div className="text-xl font-bold mb-4">作品を投稿</div>
+            <input
+              className="mb-2 px-3 py-2 border rounded w-full"
+              placeholder="タイトル"
+              value={saveData.title}
+              onChange={e => setSaveData({ ...saveData, title: e.target.value })}
+              maxLength={40}
+            />
+            <textarea
+              className="mb-4 px-3 py-2 border rounded w-full"
+              placeholder="説明（任意）"
+              value={saveData.description}
+              onChange={e => setSaveData({ ...saveData, description: e.target.value })}
+              maxLength={200}
+              rows={3}
+            />
+            <div className="flex gap-4">
+              <button
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                onClick={() => setShowSaveDialog(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
+                onClick={handleSaveConfirm}
+                disabled={isUploading}
+              >
+                {isUploading ? '投稿中...' : '投稿'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
 
 // --- ここから履歴管理ユーティリティ ---
 const HISTORY_KEY = 'dotart_room_history';

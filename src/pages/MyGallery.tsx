@@ -19,7 +19,7 @@ const MyGallery: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const [history, setHistory] = useState<RoomHistory[]>([]);
   const [serialInput, setSerialInput] = useState('');
-  const [copyMsg, setCopyMsg] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [postedArtworks, setPostedArtworks] = useState<FirebasePixelArt[]>([]);
   const [loadingPosted, setLoadingPosted] = useState(false);
 
@@ -74,8 +74,8 @@ const MyGallery: React.FC = () => {
 
   const handleCopy = (artworkId: string) => {
     navigator.clipboard.writeText(artworkId);
-    setCopyMsg('コピーしました');
-    setTimeout(() => setCopyMsg(''), 1500);
+    setCopiedId(artworkId);
+    setTimeout(() => setCopiedId(null), 1500);
   };
 
   const handleDelete = (artworkId: string) => {
@@ -157,7 +157,7 @@ const MyGallery: React.FC = () => {
                 >
                   <Clipboard className="w-4 h-4" />
                 </button>
-                {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
+                {copiedId === h.artworkId && <span className="text-green-600 text-xs ml-2">コピーしました</span>}
               </td>
               <td className="py-2 px-4 border">{h.lastEdited}</td>
               <td className="py-2 px-4 border flex gap-2 items-center">

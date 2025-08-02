@@ -11,6 +11,8 @@ import {
   limit,
   increment,
   serverTimestamp,
+  setDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
@@ -389,5 +391,38 @@ export class PixelArtService {
       console.error('Error updating pixel art:', error);
       throw error;
     }
+  }
+
+  // 最新編集状態を保存
+  static async saveLatestState(roomId: string, state: {
+    layers: any[];
+    width: number;
+    height: number;
+    palette: string[];
+    roomTitle: string;
+  }) {
+    const docRef = doc(db, 'latestStates', roomId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      await updateDoc(docRef, {
+        ...state,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(docRef, {
+        ...state,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  }
+
+  // 最新編集状態を取得
+  static async getLatestState(roomId: string) {
+    const docRef = doc(db, 'latestStates', roomId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
   }
 }
