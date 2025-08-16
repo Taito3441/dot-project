@@ -9,6 +9,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { PixelArtService } from '../services/pixelArtService';
 import { useParams, useNavigate } from "react-router-dom";
 import * as Y from 'yjs';
+// @ts-ignore - type definitions may not be bundled
+import { WebsocketProvider } from 'y-websocket';
 import { WebrtcProvider } from 'y-webrtc';
 import { isDrawingRef } from '../components/PixelEditor/Canvas';
 
@@ -64,7 +66,7 @@ const AUTO_SAVE_INTERVAL = 30000; // 30秒
 
 const Editor: React.FC = () => {
   // すべてのフックを最上部で宣言
-  const { isAuthenticated, user } = useAuth();
+  const { user } = useAuth();
   const { artworkId } = useParams<{ artworkId: string }>();
   const navigate = useNavigate();
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({ width: 32, height: 32 });
@@ -94,7 +96,9 @@ const Editor: React.FC = () => {
   };
   const [editorState, setEditorState] = useState<EditorState>(initialEditorState);
   const ydocRef = useRef<Y.Doc>();
-  const providerRef = useRef<WebrtcProvider>();
+  const providerRef = useRef<any>();
+  const awarenessRef = useRef<any>();
+  const [remoteCursors, setRemoteCursors] = useState<{ x: number; y: number; color?: string }[]>([]);
   const yLayersRef = useRef<Y.Array<any>>();
   const yCanvasSizeRef = useRef<Y.Map<any>>();
   const isYjsUpdateRef = useRef(false);
@@ -106,9 +110,9 @@ const Editor: React.FC = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveData, setSaveData] = useState({ title: '', description: '' });
   const [isUploading, setIsUploading] = useState(false);
-  const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // const [palettePos, setPalettePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
-  const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
+  // const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
   const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
   const [showPostComplete, setShowPostComplete] = useState(false);
 
@@ -125,16 +129,56 @@ const Editor: React.FC = () => {
     if (!artworkId) return;
     // Provider初期化直前にartworkIdを出力
     console.log('Joining Yjs room:', artworkId);
-    // YjsドキュメントとProvider初期化
+    // YjsドキュメントとProvider初期化（まず y-websocket、失敗時に y-webrtc フォールバック）
     const ydoc = new Y.Doc();
-    const provider = new WebrtcProvider(artworkId, ydoc, {
-      signaling: ['wss://pixelshare.fly.dev'], // fly.ioのURLに合わせてください
-    });
-    // デバッグ: Yjsのネットワーク状態を出力
-    provider.on('status', e => console.log('Yjs status:', e.connected));
-    provider.on('peers', e => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
+    const ywsUrl = (import.meta as any).env?.VITE_YWS_URL || 'ws://localhost:1234';
+    let provider: any = new WebsocketProvider(ywsUrl, artworkId, ydoc, { connect: true });
+    let wsConnected = false;
+    const onStatus = (e: any) => {
+      console.log('Yjs status:', e.connected);
+      wsConnected = Boolean(e?.connected);
+    };
+    provider.on('status', onStatus);
+    const fallbackTimer = setTimeout(() => {
+      if (!wsConnected) {
+        try { provider.off?.('status', onStatus); provider.destroy?.(); } catch {}
+        console.warn('y-websocket unreachable. Falling back to y-webrtc signaling...');
+        provider = new WebrtcProvider(artworkId!, ydoc, {
+          signaling: ['wss://pixelshare.fly.dev'],
+          // Add public STUN servers for better NAT traversal
+          peerOpts: {
+            config: {
+              iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
+              ]
+            }
+          }
+        });
+        provider.on('status', (e: any) => console.log('Yjs status:', e.connected));
+        // Debug peers count to verify P2P connectivity
+        provider.on('peers', (e: any) => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
+        providerRef.current = provider;
+      }
+    }, 2000);
     ydocRef.current = ydoc;
     providerRef.current = provider;
+    awarenessRef.current = (provider as any).awareness;
+    // Awareness: listen remote cursor changes
+    const awareness = awarenessRef.current;
+    if (awareness) {
+      const handleAwareness = () => {
+        const states = Array.from(awareness.getStates().values());
+        const cursors = states
+          .map((s: any) => s?.cursor)
+          .filter(Boolean);
+        setRemoteCursors(cursors);
+      };
+      awareness.on('change', handleAwareness);
+    }
     // Yjsで同期するデータ構造
     const yLayers = ydoc.getArray('layers');
     const yCanvasSize = ydoc.getMap('canvasSize');
@@ -147,25 +191,29 @@ const Editor: React.FC = () => {
     const updateFromYjs = () => {
       if (isDrawingRef.current) return;
       isYjsUpdateRef.current = true;
+      // 先にサイズを取得
+      const width = Number(yCanvasSize.get('width')) || 32;
+      const height = Number(yCanvasSize.get('height')) || 32;
       const layersRaw = yLayers.toArray();
       const seen = new Set<string>();
       const layers: Layer[] = (layersRaw as Layer[])
         .map(l => ({
           ...l,
-          canvas: Array.isArray(l.canvas) ? l.canvas : createEmptyCanvas(
-            typeof (l as any).canvas?.[0]?.length === 'number' ? (l as any).canvas[0].length : 32,
-            typeof (l as any).canvas?.length === 'number' ? (l as any).canvas.length : 32
-          )
+          canvas: Array.isArray((l as any).canvas) && Array.isArray((l as any).canvas[0])
+            ? (l as any).canvas
+            : PixelArtService.reshapeCanvas(
+                Array.isArray((l as any).canvas)
+                  ? (l as any).canvas
+                  : Array(width * height).fill(0 as number),
+                width,
+                height
+              ) as any
         }))
         .filter(l => {
           if (seen.has(l.id)) return false;
           seen.add(l.id);
           return true;
         });
-      const widthRaw = yCanvasSize.get('width');
-      const heightRaw = yCanvasSize.get('height');
-      const width = typeof widthRaw === 'number' ? widthRaw : 32;
-      const height = typeof heightRaw === 'number' ? heightRaw : 32;
       const yTitle = yRoomTitle.toString();
       setEditorState(prev => {
         let changed = false;
@@ -272,10 +320,8 @@ const Editor: React.FC = () => {
           seen.add(l.id);
           return true;
         });
-      const widthRaw = yCanvasSize.get('width');
-      const heightRaw = yCanvasSize.get('height');
-      const width = typeof widthRaw === 'number' ? widthRaw : 32;
-      const height = typeof heightRaw === 'number' ? heightRaw : 32;
+      const width = Number(yCanvasSize.get('width')) || 32;
+      const height = Number(yCanvasSize.get('height')) || 32;
       setCanvasSize({ width, height });
       if (layers.length > 0) {
         updateEditorState({ layers });
@@ -285,6 +331,7 @@ const Editor: React.FC = () => {
     updateFromYjs();
     // クリーンアップ
     return () => {
+      try { clearTimeout(fallbackTimer); } catch {}
       // クリーンアップ時にFirestoreへ最新状態を保存（Yjsの内容を直接参照）
       if (artworkId && yLayersRef.current && yCanvasSizeRef.current) {
         const yLayers = yLayersRef.current;
@@ -312,12 +359,27 @@ const Editor: React.FC = () => {
       yLayers.unobserveDeep(updateFromYjs);
       yCanvasSize.unobserveDeep(updateFromYjs);
       yRoomTitle.unobserve(updateFromYjs);
-      provider.destroy();
+      if ((provider as any).destroy) (provider as any).destroy();
       ydoc.destroy();
     };
   }, [artworkId]);
 
-  // React state→Yjs反映（layers/roomTitleのみ）
+  // Local cursor update -> awareness
+  const handleCursorMove = (pos: { x: number; y: number } | null) => {
+    const awareness = awarenessRef.current;
+    if (!awareness) return;
+    const me = awareness.getLocalState() || {};
+    if (pos) {
+      awareness.setLocalState({
+        ...me,
+        cursor: { x: pos.x, y: pos.y, color: '#00A3FF' },
+      });
+    } else {
+      awareness.setLocalState({ ...me, cursor: null });
+    }
+  };
+
+  // React state→Yjs反映（layers/roomTitle/canvasSize）
   useEffect(() => {
     if (isYjsUpdateRef.current) return;
     if (!yLayersRef.current || !yRoomTitleRef.current) return;
@@ -326,7 +388,7 @@ const Editor: React.FC = () => {
     // layers
     const layers = editorState.layers;
     const yLayerArr = yLayers.toArray();
-    const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
+    // const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
     // 追加・更新
     layers.forEach(l => {
       const idx = (yLayerArr as Layer[]).findIndex(yl => yl.id === l.id);
@@ -355,7 +417,15 @@ const Editor: React.FC = () => {
       yRoomTitle.delete(0, yRoomTitle.length);
       yRoomTitle.insert(0, title);
     }
-  }, [editorState.layers, editorState.roomTitle]);
+    // canvasSize 双方向同期（React -> Yjs）
+    if (yCanvasSizeRef.current) {
+      const yCanvasSize = yCanvasSizeRef.current;
+      const w = Number(yCanvasSize.get('width')) || 0;
+      const h = Number(yCanvasSize.get('height')) || 0;
+      if (w !== canvasSize.width) yCanvasSize.set('width', canvasSize.width);
+      if (h !== canvasSize.height) yCanvasSize.set('height', canvasSize.height);
+    }
+  }, [editorState.layers, editorState.roomTitle, canvasSize.width, canvasSize.height]);
 
   // 初回: Yjsが空ならinsertせず、UI上で「無題」と表示するだけ
   useEffect(() => {
@@ -383,39 +453,8 @@ const Editor: React.FC = () => {
     saveRoomHistory(artworkId, editorState.roomTitle || '無題');
   }, [artworkId]);
 
-  // キャンバス編集時（editorState.layers, editorState.roomTitle, canvasSize, paletteが変化したとき）にPixelArtService.saveLatestStateを呼び、最新編集状態をFirestoreに保存するuseEffectを追加します。
-  useEffect(() => {
-    if (!artworkId) return;
-    // Firestoreに最新編集状態を保存（厳密バリデーション）
-    const safeLayers = (Array.isArray(editorState.layers) ? editorState.layers : [])
-      .filter(Boolean)
-      .map(l => ({
-        id: l.id, // 既存IDを必ず維持
-        name: typeof l.name === 'string' ? l.name : '',
-        canvas: Array.isArray(l.canvas)
-          ? l.canvas.flat().map(v => (typeof v === 'number' && isFinite(v) ? v : 0))
-          : Array(canvasSize.width * canvasSize.height).fill(0),
-        opacity: typeof l.opacity === 'number' && isFinite(l.opacity) ? l.opacity : 1,
-        visible: typeof l.visible === 'boolean' ? l.visible : true,
-      }));
-    // canvasが全て0や空の場合は保存をスキップ
-    if (!safeLayers.length || safeLayers.every(l => l.canvas.every(v => v === 0))) {
-      return;
-    }
-    const safePalette = Array.isArray(editorState.palette)
-      ? editorState.palette.filter(c => typeof c === 'string' && c)
-      : getDefaultPalette();
-    const data = {
-      layers: safeLayers,
-      width: typeof canvasSize.width === 'number' && isFinite(canvasSize.width) ? canvasSize.width : 32,
-      height: typeof canvasSize.height === 'number' && isFinite(canvasSize.height) ? canvasSize.height : 32,
-      palette: safePalette,
-      roomTitle: typeof editorState.roomTitle === 'string' ? editorState.roomTitle : '無題',
-      layersCount: safeLayers.length, // レイヤー総数を追加
-    };
-    console.log('saveLatestState data', data);
-    PixelArtService.saveLatestState(artworkId, data);
-  }, [artworkId, editorState.layers, editorState.roomTitle, canvasSize.width, canvasSize.height, editorState.palette]);
+  // 直接保存はやめ、下のデバウンス保存に一本化
+  // useEffect(() => { ... });
 
   const updateEditorState = (newState: Partial<EditorState>) => {
     setEditorState(prev => {
@@ -534,17 +573,47 @@ const Editor: React.FC = () => {
   // 自動保存関数
   // 自動保存(autoSave)やupdatePixelArtの呼び出しは削除
 
-  // エディターステートが変化したら自動保存タイマーをリセット
+  // エディターステートが変化したら自動保存タイマーをリセット（デバウンス）
   useEffect(() => {
-    if (!user) return;
+    if (!user || !artworkId) return;
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
-      // 自動保存(autoSave)やupdatePixelArtの呼び出しは削除
+      try {
+        // Firestoreに最新編集状態を保存（厳密バリデーション）
+        const safeLayers = (Array.isArray(editorState.layers) ? editorState.layers : [])
+          .filter(Boolean)
+          .map(l => ({
+            id: l.id,
+            name: typeof l.name === 'string' ? l.name : '',
+            canvas: Array.isArray(l.canvas)
+              ? l.canvas.flat().map(v => (typeof v === 'number' && isFinite(v) ? v : 0))
+              : Array(canvasSize.width * canvasSize.height).fill(0),
+            opacity: typeof l.opacity === 'number' && isFinite(l.opacity) ? l.opacity : 1,
+            visible: typeof l.visible === 'boolean' ? l.visible : true,
+          }));
+        if (!safeLayers.length || safeLayers.every(l => l.canvas.every(v => v === 0))) {
+          return;
+        }
+        const safePalette = Array.isArray(editorState.palette)
+          ? editorState.palette.filter(c => typeof c === 'string' && c)
+          : getDefaultPalette();
+        const data = {
+          layers: safeLayers,
+          width: typeof canvasSize.width === 'number' && isFinite(canvasSize.width) ? canvasSize.width : 32,
+          height: typeof canvasSize.height === 'number' && isFinite(canvasSize.height) ? canvasSize.height : 32,
+          palette: safePalette,
+          roomTitle: typeof editorState.roomTitle === 'string' ? editorState.roomTitle : '無題',
+          layersCount: safeLayers.length,
+        };
+        PixelArtService.saveLatestState(artworkId, data);
+      } catch (e) {
+        console.warn('debounced saveLatestState failed', e);
+      }
     }, AUTO_SAVE_INTERVAL);
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     };
-  }, [editorState, saveData.title, saveData.description, canvasSize, user, artworkId]);
+  }, [editorState, canvasSize.width, canvasSize.height, user, artworkId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -768,6 +837,8 @@ const Editor: React.FC = () => {
           setLassoMenuAction={setLassoMenuAction as (action: null) => void}
           backgroundPattern={backgroundPattern}
           showGrid={showGrid}
+          onCursorMove={handleCursorMove}
+          remoteCursors={remoteCursors}
         />
       </div>
       {/* 投稿完了ダイアログ */}

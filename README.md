@@ -131,6 +131,16 @@ npm run dev
 npm run build
 ```
 
+### リアルタイム同期のプロバイダ
+- 既定: y-websocket を使用。`.env` に `VITE_YWS_URL` を設定（例: `ws://localhost:1234`）。
+- 旧: y-webrtc 依存は保持していますが既定では未使用。
+
+### y-websocket サーバ
+- `../yws-server/` に最小構成の y-websocket サーバ（Redis 対応）を追加。
+- 開発起動例:
+  - `docker run -p 6379:6379 redis`
+  - `cd ../yws-server && npm ci && npm start`
+
 ## ライセンス
 
 MIT License
