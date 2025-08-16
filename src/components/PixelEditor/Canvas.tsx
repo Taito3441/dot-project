@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { EditorState } from '../../types';
 import { floodFill } from '../../utils/pixelArt';
 import { createEmptyCanvas } from '../../utils/pixelArt';
@@ -12,15 +12,17 @@ interface CanvasProps {
   setLassoMenuAction?: (action: null) => void;
   backgroundPattern: 'light' | 'dark';
   showGrid: boolean;
+  onCursorMove?: (pos: { x: number; y: number } | null) => void;
+  remoteCursors?: { x: number; y: number; color?: string }[];
 }
 
-type Layer = {
-  id: string;
-  name: string;
-  canvas: number[][];
-  opacity: number; // 0~1
-  visible: boolean;
-};
+// type Layer = {
+//   id: string;
+//   name: string;
+//   canvas: number[][];
+//   opacity: number; // 0~1
+//   visible: boolean;
+// };
 
 export const isDrawingRef = { current: false };
 
@@ -33,6 +35,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   setLassoMenuAction,
   backgroundPattern,
   showGrid,
+  onCursorMove,
+  remoteCursors,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -509,16 +513,16 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   // 1. 移動モード時、選択範囲内クリックでドラッグ開始
-  const isInLassoSelection = (coords: { x: number; y: number }) => {
-    for (const region of lassoSelections) {
-      for (const { x, y } of region) {
-        if (coords.x === x + lassoDragOffset.x && coords.y === y + lassoDragOffset.y) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
+  // const isInLassoSelection = (coords: { x: number; y: number }) => {
+  //   for (const region of lassoSelections) {
+  //     for (const { x, y } of region) {
+  //       if (coords.x === x + lassoDragOffset.x && coords.y === y + lassoDragOffset.y) {
+  //         return true;
+  //       }
+  //     }
+  //   }
+  //   return false;
+  // };
 
   const handleMouseDown = (event: React.MouseEvent) => {
     if (event.button === 1) return; // ホイールボタンはツール操作を一切無効化
@@ -810,6 +814,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (editorState.tool === 'fill' || editorState.tool === 'eyedropper') return;
 
     const coords = getPixelCoordinates(event);
+    if (coords && onCursorMove) onCursorMove(coords);
     if (!coords || !dragStart) return;
 
     const points = getLinePoints(dragStart, coords);
@@ -825,6 +830,12 @@ export const Canvas: React.FC<CanvasProps> = ({
     // ローカルのcanvasを即時再描画
     drawCanvas();
     // --- ここでonStateChangeは呼ばない（マウスアップ時のみ同期）---
+  };
+  const originalHandleMouseDown = handleMouseDown;
+  const handleMouseDownWithFlag = (event: React.MouseEvent) => {
+    if (isPanning) return;
+    isDrawingRef.current = true;
+    originalHandleMouseDown(event);
   };
 
   // --- コピー確定処理 ---
@@ -898,6 +909,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   // handleMouseUp: 確定操作
   const handleMouseUp = () => {
     if (isPanning) return;
+    isDrawingRef.current = false;
+    if (onCursorMove) onCursorMove(null);
     setIsLassoing(false);
     isLassoingRef.current = false;
     lastLassoPointRef.current = null;
@@ -919,6 +932,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const handlePanMouseDown = (event: React.MouseEvent) => {
     if (event.button === 1) { // ミドルボタン
       event.preventDefault();
+      isDrawingRef.current = false;
       setIsPanning(true);
       setPanStart({ x: event.clientX - panOffset.x, y: event.clientY - panOffset.y });
     }
@@ -1011,12 +1025,35 @@ export const Canvas: React.FC<CanvasProps> = ({
           width={canvasWidth}
           height={canvasHeight}
           className="border border-gray-300 rounded shadow-sm cursor-crosshair bg-white"
-          onMouseDown={isPanning ? undefined : handleMouseDown}
+          onMouseDown={isPanning ? undefined : handleMouseDownWithFlag}
           onMouseMove={isPanning ? undefined : handleMouseMove}
           onMouseUp={isPanning ? undefined : handleMouseUp}
           onMouseLeave={isPanning ? undefined : () => { setIsLassoing(false); isLassoingRef.current = false; lastLassoPointRef.current = null; handleMouseUp(); }}
           onDoubleClick={handleDoubleClick}
         />
+        {/* Remote cursors */}
+        {Array.isArray(remoteCursors) && remoteCursors.length > 0 && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none"
+            width={canvasWidth}
+            height={canvasHeight}
+            style={{ zIndex: 40 }}
+          >
+            {remoteCursors.map((c, idx) => (
+              <g key={idx}>
+                <rect
+                  x={c.x * pixelSize}
+                  y={c.y * pixelSize}
+                  width={pixelSize}
+                  height={pixelSize}
+                  fill={c.color || 'rgba(0,163,255,0.25)'}
+                  stroke={c.color || '#00A3FF'}
+                  strokeWidth={Math.max(1, pixelSize * 0.06)}
+                />
+              </g>
+            ))}
+          </svg>
+        )}
         {/* --- キャンバス外側の目印（メモリ） --- */}
         <svg
           className="absolute left-0 top-0 pointer-events-none"
