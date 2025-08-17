@@ -6,26 +6,56 @@ require('dotenv').config();
 
 const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
+const fs = require('fs');
 
 // y-websocket server utilities (robust import across versions)
 let setupWSConnection, setPersistence;
-const tryRequire = (p) => {
-  try { return require(p); } catch (_) { return null; }
-};
-const candidates = [
-  'y-websocket/bin/utils.cjs',
-  'y-websocket/bin/utils.js',
-  'y-websocket/dist/utils.cjs',
-  'y-websocket/dist/utils.js',
-  'y-websocket/utils',
-];
-for (const mod of candidates) {
-  const m = tryRequire(mod);
-  if (m && m.setupWSConnection) {
-    setupWSConnection = m.setupWSConnection;
-    setPersistence = m.setPersistence || (() => {});
-    console.log(`[yws] loaded utils from ${mod}`);
-    break;
+
+// Prefer absolute path resolution inside the installed package to bypass exports restrictions
+const pkgJsonPath = (() => { try { return require.resolve('y-websocket/package.json'); } catch { return null; } })();
+if (pkgJsonPath) {
+  const baseDir = path.dirname(pkgJsonPath);
+  const relCandidates = [
+    'bin/utils.cjs',
+    'bin/utils.js',
+    'dist/utils.cjs',
+    'dist/utils.js',
+    'utils.cjs',
+    'utils.js',
+  ];
+  for (const rel of relCandidates) {
+    const abs = path.join(baseDir, rel);
+    try {
+      if (fs.existsSync(abs)) {
+        const m = require(abs);
+        if (m && m.setupWSConnection) {
+          setupWSConnection = m.setupWSConnection;
+          setPersistence = m.setPersistence || (() => {});
+          console.log(`[yws] loaded utils from ${abs}`);
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+// Fallback to legacy deep-imports (may be blocked by exports)
+if (!setupWSConnection) {
+  const tryRequire = (p) => { try { return require(p); } catch { return null; } };
+  const legacyCandidates = [
+    'y-websocket/dist/utils.cjs',
+    'y-websocket/bin/utils.cjs',
+    'y-websocket/bin/utils.js',
+  ];
+  for (const mod of legacyCandidates) {
+    const m = tryRequire(mod);
+    if (m && m.setupWSConnection) {
+      setupWSConnection = m.setupWSConnection;
+      setPersistence = m.setPersistence || (() => {});
+      console.log(`[yws] loaded utils from ${mod}`);
+      break;
+    }
   }
 }
 if (!setupWSConnection) {
@@ -43,13 +73,24 @@ if (hasRedisEnv) {
     const { RedisPersistence } = require('y-redis');
     const redisHost = process.env.REDIS_HOST || '127.0.0.1';
     const redisPort = parseInt(process.env.REDIS_PORT || '6379', 10);
+    const redisUser = process.env.REDIS_USERNAME || process.env.REDIS_USER;
+    const redisPass = process.env.REDIS_PASSWORD || process.env.REDIS_PASS;
+    const redisTls = String(process.env.REDIS_TLS || '').toLowerCase();
+    const useTls = redisTls === '1' || redisTls === 'true' || redisTls === 'yes';
     const redisOpts = process.env.REDIS_URL
-      ? { url: process.env.REDIS_URL }
-      : { host: redisHost, port: redisPort };
-    const redisPersistence = new RedisPersistence(redisOpts);
+      ? process.env.REDIS_URL // pass URL string directly for ioredis
+      : (() => {
+          const o = { host: redisHost, port: redisPort };
+          if (redisUser) o.username = redisUser;
+          if (redisPass) o.password = redisPass;
+          if (useTls) o.tls = {};
+          return o;
+        })();
+    const redisPersistence = new RedisPersistence({ redisOpts });
     setPersistence(redisPersistence);
     redisReady = true;
-    console.log('[yws] Redis persistence enabled', redisOpts);
+    const logOpts = typeof redisOpts === 'string' ? { url: redisOpts } : { host: redisOpts.host, port: redisOpts.port, username: redisOpts.username, tls: !!redisOpts.tls };
+    console.log('[yws] Redis persistence enabled', logOpts);
   } catch (e) {
     console.warn('[yws] Redis persistence requested but not enabled:', e?.message || e);
   }
