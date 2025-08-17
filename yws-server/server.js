@@ -112,8 +112,20 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 wss.on('connection', (conn, req) => {
+  try {
+    const origin = req.headers?.origin || '-';
+    console.log('[yws] ws connection', { url: req.url, origin });
+  } catch {}
   // pingTimeout keeps connections alive and cleans up stale peers
   setupWSConnection(conn, req, { pingTimeout: 30_000 });
+  conn.on('close', (code, reason) => {
+    try {
+      console.log('[yws] ws close', { url: req.url, code, reason: reason?.toString?.() || '' });
+    } catch {}
+  });
+  conn.on('error', (err) => {
+    try { console.warn('[yws] ws error', err?.message || err); } catch {}
+  });
 });
 
 server.listen(PORT, () => {
