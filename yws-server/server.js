@@ -87,9 +87,29 @@ if (hasRedisEnv) {
           return o;
         })();
     const redisPersistence = new RedisPersistence({ redisOpts });
-    setPersistence(redisPersistence);
+    // y-websocket v1.x expects persistence to provide bindState() and writeState().
+    // y-redis implements bindState but not writeState, so provide a no-op shim.
+    const persistenceShim = {
+      bindState: (name, ydoc) => redisPersistence.bindState(name, ydoc),
+      writeState: async (_name, _ydoc) => Promise.resolve(),
+      // expose optional helpers if present
+      clearDocument: (...args) => redisPersistence.clearDocument?.(...args),
+      clearAllDocuments: (...args) => redisPersistence.clearAllDocuments?.(...args),
+      destroy: (...args) => redisPersistence.destroy?.(...args)
+    };
+    setPersistence(persistenceShim);
     redisReady = true;
-    const logOpts = typeof redisOpts === 'string' ? { url: redisOpts } : { host: redisOpts.host, port: redisOpts.port, username: redisOpts.username, tls: !!redisOpts.tls };
+    const logOpts = (() => {
+      try {
+        if (typeof redisOpts === 'string') {
+          const u = new URL(redisOpts);
+          return { host: u.hostname, port: Number(u.port) || 6379, tls: u.protocol === 'rediss:' };
+        }
+        return { host: redisOpts.host, port: redisOpts.port, username: redisOpts.username ? '[set]' : undefined, tls: !!redisOpts.tls };
+      } catch {
+        return { url: '[redacted]' };
+      }
+    })();
     console.log('[yws] Redis persistence enabled', logOpts);
   } catch (e) {
     console.warn('[yws] Redis persistence requested but not enabled:', e?.message || e);
