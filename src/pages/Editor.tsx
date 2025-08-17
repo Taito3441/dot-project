@@ -173,7 +173,7 @@ const Editor: React.FC = () => {
         provider.on('peers', (e: any) => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
         providerRef.current = provider;
       }
-    }, 2000);
+    }, 6000);
     ydocRef.current = ydoc;
     providerRef.current = provider;
     awarenessRef.current = (provider as any).awareness;
