@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: yws-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+  yws:
+    build: .
+    container_name: yws-server
+    ports:
+      - "1234:1234"
+    environment:
+      - NODE_ENV=production
+      - PORT=1234
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+
