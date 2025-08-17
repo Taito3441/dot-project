@@ -134,9 +134,19 @@ const Editor: React.FC = () => {
     const ywsUrl = (import.meta as any).env?.VITE_YWS_URL || 'ws://localhost:1234';
     let provider: any = new WebsocketProvider(ywsUrl, artworkId, ydoc, { connect: true });
     let wsConnected = false;
+    const isConnected = (e: any) => {
+      if (!e) return false;
+      // y-websocket v1.x emits { status: 'connected' | 'disconnected' }
+      if (typeof e.status === 'string') return e.status === 'connected';
+      // y-websocket v3 emits { connected: boolean }
+      if (typeof e.connected === 'boolean') return e.connected;
+      // fallback: treat truthy as connected
+      return Boolean(e);
+    };
     const onStatus = (e: any) => {
-      console.log('Yjs status:', e.connected);
-      wsConnected = Boolean(e?.connected);
+      const connected = isConnected(e);
+      console.log('Yjs status:', connected);
+      wsConnected = connected;
     };
     provider.on('status', onStatus);
     const fallbackTimer = setTimeout(() => {
@@ -158,7 +168,7 @@ const Editor: React.FC = () => {
             }
           }
         });
-        provider.on('status', (e: any) => console.log('Yjs status:', e.connected));
+        provider.on('status', (e: any) => console.log('Yjs status:', isConnected(e)));
         // Debug peers count to verify P2P connectivity
         provider.on('peers', (e: any) => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
         providerRef.current = provider;
