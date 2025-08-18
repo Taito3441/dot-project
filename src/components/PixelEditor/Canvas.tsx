@@ -14,6 +14,9 @@ interface CanvasProps {
   showGrid: boolean;
   onCursorMove?: (pos: { x: number; y: number } | null) => void;
   remoteCursors?: { x: number; y: number; color?: string }[];
+  // 受信側の部分再描画用
+  dirtyRects?: { x: number; y: number; w: number; h: number }[];
+  dirtyTick?: number; // 変更カウンタ
 }
 
 // type Layer = {
@@ -37,6 +40,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   showGrid,
   onCursorMove,
   remoteCursors,
+  dirtyRects,
+  dirtyTick,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -427,6 +432,75 @@ export const Canvas: React.FC<CanvasProps> = ({
       }
     }
   };
+
+  // 矩形領域だけ再描画
+  const drawRects = (rects: { x: number; y: number; w: number; h: number }[]) => {
+    if (!editorState.layers || editorState.layers.length === 0) return;
+    const layer = editorState.layers[editorState.currentLayer];
+    if (!layer || !Array.isArray(layer.canvas) || !Array.isArray(layer.canvas[0])) return;
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d')!; ctx.imageSmoothingEnabled = false;
+
+    // 背景とグリッドをそのまま維持したいので、対象矩形だけクリア→再塗り
+    rects.forEach(r => {
+      const rx = Math.max(0, r.x), ry = Math.max(0, r.y);
+      const rw = Math.min(r.w, width - rx), rh = Math.min(r.h, height - ry);
+      if (rw <= 0 || rh <= 0) return;
+      // 背景市松
+      const gridSize = Math.max(4, Math.floor(pixelSize / 3));
+      const isDark = backgroundPattern === 'dark';
+      const colorA = isDark ? '#111' : '#f3f4f6';
+      const colorB = isDark ? '#222' : '#e5e7eb';
+      // 背景再描画
+      for (let yy = ry * pixelSize; yy < (ry + rh) * pixelSize; yy += gridSize) {
+        for (let xx = rx * pixelSize; xx < (rx + rw) * pixelSize; xx += gridSize) {
+          ctx.fillStyle = (((xx / gridSize) + (yy / gridSize)) % 2 === 0) ? colorA : colorB;
+          ctx.fillRect(xx, yy, gridSize, gridSize);
+        }
+      }
+      // グリッド線
+      if (showGrid) {
+        ctx.strokeStyle = editorState.backgroundPattern === 'dark' ? '#fff' : '#000';
+        ctx.lineWidth = 0.25;
+        for (let x = rx; x <= rx + rw; x++) {
+          ctx.beginPath(); ctx.moveTo(x * pixelSize, ry * pixelSize); ctx.lineTo(x * pixelSize, (ry + rh) * pixelSize); ctx.stroke();
+        }
+        for (let y = ry; y <= ry + rh; y++) {
+          ctx.beginPath(); ctx.moveTo(rx * pixelSize, y * pixelSize); ctx.lineTo((rx + rw) * pixelSize, y * pixelSize); ctx.stroke();
+        }
+      }
+      // ピクセル合成
+      for (let y = ry; y < ry + rh; y++) {
+        for (let x = rx; x < rx + rw; x++) {
+          let color = { r: 0, g: 0, b: 0, a: 0 };
+          for (let l = 0; l < editorState.layers.length; l++) {
+            const lyr = editorState.layers[l]; if (!lyr.visible) continue;
+            const can = (l === editorState.currentLayer) ? canvasDataRef.current : lyr.canvas;
+            const colorIndex = can?.[y]?.[x] || 0;
+            if (colorIndex > 0) {
+              const hex = editorState.palette[colorIndex - 1];
+              const fg = hexToRgba(hex, lyr.opacity);
+              color = blend(fg, color);
+            }
+          }
+          if (color.a > 0) {
+            ctx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a})`;
+            ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+          } else {
+            // 透明ならセルをクリア
+            ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+          }
+        }
+      }
+    });
+  };
+
+  // 受信差分トリガで部分再描画
+  useEffect(() => {
+    if (!dirtyRects || !dirtyRects.length) return;
+    drawRects(dirtyRects);
+    // eslint-disable-next-line
+  }, [dirtyTick]);
 
   const getPixelCoordinates = (event: React.MouseEvent): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
