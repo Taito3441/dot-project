@@ -409,48 +409,36 @@ const Editor: React.FC = () => {
 
     provider.on('synced', async (arg0: { synced: boolean }) => {
       const isSynced = arg0.synced;
-      if (isSynced) {
-        // 常に Yjs 側のサイズを信頼。未設定のときだけローカルから初期化
-        const hasSize = yCanvasSize.has('width') && yCanvasSize.has('height');
-        const yLayersArr = yLayers.toArray();
-        const isAllZero = yLayersArr.length === 0 || yLayersArr.every(l => {
-          const layer = l as any;
-          if (Array.isArray(layer.canvas)) {
-            const flat = layer.canvas.flat ? layer.canvas.flat() : layer.canvas;
-            return flat.every((v: number) => v === 0);
+      if (!isSynced) return;
+      // サイズが未設定 かつ レイヤーが空の時だけ初期化。既存があれば一切触らない
+      const hasSize = yCanvasSize.has('width') && yCanvasSize.has('height');
+      const hasLayers = yLayers.length > 0;
+      if (!hasSize && !hasLayers) {
+        const latest = await PixelArtService.getLatestState(artworkId);
+        if (latest && latest.layers && latest.layers.length > 0) {
+          const layers: Layer[] = (latest.layers as import('../types').LayerFirestore[]).map((l: import('../types').LayerFirestore) => ({
+            ...l,
+            canvas: PixelArtService.reshapeCanvas(l.canvas, latest.width, latest.height) as number[][]
+          }));
+          for (const layer of layers.slice(0, latest.layersCount || layers.length)) {
+            yLayers.push([layer]);
           }
-          return true;
-        });
-        if (!hasSize || isAllZero) {
-          while (yLayers.length > 0) yLayers.delete(0, 1);
-          const latest = await PixelArtService.getLatestState(artworkId);
-          if (latest && latest.layers && latest.layers.length > 0) {
-            const layers: Layer[] = (latest.layers as import('../types').LayerFirestore[]).map((l: import('../types').LayerFirestore) => ({
-              ...l,
-              canvas: PixelArtService.reshapeCanvas(l.canvas, latest.width, latest.height) as number[][]
-            }));
-            for (const layer of layers.slice(0, latest.layersCount || layers.length)) {
-              yLayers.push([layer]);
-            }
-            yCanvasSize.set('width', latest.width);
-            yCanvasSize.set('height', latest.height);
-            yRoomTitle.insert(0, latest.roomTitle || '無題');
-            updateFromYjs();
-          } else {
-            while (yLayers.length > 0) yLayers.delete(0, 1);
-            const initState = initialEditorState();
-            yLayers.push([{
-              ...initState.layers[0],
-              canvas: initState.layers[0].canvas.flat(),
-            }]);
-            yCanvasSize.set('width', initState.canvas[0].length);
-            yCanvasSize.set('height', initState.canvas.length);
-            yRoomTitle.insert(0, initState.roomTitle);
-            updateFromYjs();
-          }
+          yCanvasSize.set('width', latest.width);
+          yCanvasSize.set('height', latest.height);
+          if (yRoomTitle.length === 0) yRoomTitle.insert(0, latest.roomTitle || '無題');
+        } else {
+          const initState = initialEditorState();
+          yLayers.push([{
+            ...initState.layers[0],
+            canvas: initState.layers[0].canvas.flat(),
+          }]);
+          yCanvasSize.set('width', initState.canvas[0].length);
+          yCanvasSize.set('height', initState.canvas.length);
+          if (yRoomTitle.length === 0) yRoomTitle.insert(0, initState.roomTitle);
         }
-        // それ以外はYjsの内容でeditorStateを初期化（updateFromYjsが走る）
       }
+      // 既存データがある場合は単に反映
+      updateFromYjs();
     });
 
     // 初回: Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
