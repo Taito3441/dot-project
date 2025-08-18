@@ -239,7 +239,14 @@ const Editor: React.FC = () => {
     yRoomTitleRef.current = yRoomTitle;
 
     // Yjs→React state反映
-    const updateFromYjs = () => {
+    // Yjs→React 反映。origin==='local'（自分のtransact）由来は無視
+    const updateFromYjs = (events?: any) => {
+      try {
+        if (Array.isArray(events)) {
+          const isLocal = events.some((e: any) => e?.transaction?.origin === 'local');
+          if (isLocal) return;
+        }
+      } catch {}
       if (isDrawingRef.current) return;
       isYjsUpdateRef.current = true;
       // 先にサイズを取得
@@ -279,9 +286,9 @@ const Editor: React.FC = () => {
         isYjsUpdateRef.current = false;
       }, 0);
     };
-    yLayers.observeDeep(updateFromYjs);
-    yCanvasSize.observeDeep(updateFromYjs);
-    yRoomTitle.observe(updateFromYjs);
+    yLayers.observeDeep(updateFromYjs as any);
+    yCanvasSize.observeDeep(updateFromYjs as any);
+    yRoomTitle.observe(updateFromYjs as any);
 
     let didInit = false;
     provider.on('synced', async (arg0: { synced: boolean }) => {
@@ -430,41 +437,43 @@ const Editor: React.FC = () => {
     const yLayerArr = yLayers.toArray();
     // const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
     // 追加・更新
-    layers.forEach(l => {
-      const idx = (yLayerArr as Layer[]).findIndex(yl => yl.id === l.id);
-      if (idx === -1) {
-        yLayers.push([l]);
-      } else {
-        // update: 既存レイヤーを置き換え
-        if (JSON.stringify((yLayerArr as Layer[])[idx]) !== JSON.stringify(l)) {
-          yLayers.delete(idx, 1);
-          yLayers.insert(idx, [l]);
+    (ydocRef.current as any)?.transact(() => {
+      layers.forEach(l => {
+        const idx = (yLayerArr as Layer[]).findIndex(yl => yl.id === l.id);
+        if (idx === -1) {
+          yLayers.push([l]);
+        } else {
+          // update: 既存レイヤーを置き換え
+          if (JSON.stringify((yLayerArr as Layer[])[idx]) !== JSON.stringify(l)) {
+            yLayers.delete(idx, 1);
+            yLayers.insert(idx, [l]);
+          }
         }
+      });
+      // Yjsにしかないレイヤーは削除
+      const toDelete: number[] = [];
+      (yLayerArr as Layer[]).forEach((yl, idx) => {
+        if (!layers.find(l => l.id === yl.id)) {
+          toDelete.push(idx);
+        }
+      });
+      toDelete.sort((a, b) => b - a); // 降順
+      toDelete.forEach(idx => yLayers.delete(idx, 1));
+      // roomTitle（違うときだけdelete→insert）
+      const title = editorState.roomTitle || '無題';
+      if (yRoomTitle.toString() !== title) {
+        yRoomTitle.delete(0, yRoomTitle.length);
+        yRoomTitle.insert(0, title);
       }
-    });
-    // Yjsにしかないレイヤーは削除
-    const toDelete: number[] = [];
-    (yLayerArr as Layer[]).forEach((yl, idx) => {
-      if (!layers.find(l => l.id === yl.id)) {
-        toDelete.push(idx);
+      // canvasSize 双方向同期（React -> Yjs）
+      if (yCanvasSizeRef.current) {
+        const yCanvasSize = yCanvasSizeRef.current;
+        const w = Number(yCanvasSize.get('width')) || 0;
+        const h = Number(yCanvasSize.get('height')) || 0;
+        if (w !== canvasSize.width) yCanvasSize.set('width', canvasSize.width);
+        if (h !== canvasSize.height) yCanvasSize.set('height', canvasSize.height);
       }
-    });
-    toDelete.sort((a, b) => b - a); // 降順
-    toDelete.forEach(idx => yLayers.delete(idx, 1));
-    // roomTitle（違うときだけdelete→insert）
-    const title = editorState.roomTitle || '無題';
-    if (yRoomTitle.toString() !== title) {
-      yRoomTitle.delete(0, yRoomTitle.length);
-      yRoomTitle.insert(0, title);
-    }
-    // canvasSize 双方向同期（React -> Yjs）
-    if (yCanvasSizeRef.current) {
-      const yCanvasSize = yCanvasSizeRef.current;
-      const w = Number(yCanvasSize.get('width')) || 0;
-      const h = Number(yCanvasSize.get('height')) || 0;
-      if (w !== canvasSize.width) yCanvasSize.set('width', canvasSize.width);
-      if (h !== canvasSize.height) yCanvasSize.set('height', canvasSize.height);
-    }
+    }, 'local');
   }, [editorState.layers, editorState.roomTitle, canvasSize.width, canvasSize.height]);
 
   // 初回: Yjsが空ならinsertせず、UI上で「無題」と表示するだけ
