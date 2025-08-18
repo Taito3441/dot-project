@@ -651,7 +651,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       );
       onStateChange({ layers: newLayers });
       setIsDrawing(false);
-      setDragStart(null);
+      dragStartRef.current = null;
       return;
     }
 
