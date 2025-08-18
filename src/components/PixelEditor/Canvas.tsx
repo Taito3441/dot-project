@@ -40,7 +40,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const canvasDataRef = useRef<number[][]>([]);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
@@ -638,7 +638,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     setIsDrawing(true);
-    setDragStart(coords);
+    dragStartRef.current = coords;
 
     if (editorState.tool === 'fill') {
       // 塗りつぶし
@@ -815,9 +815,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     const coords = getPixelCoordinates(event);
     if (coords && onCursorMove) onCursorMove(coords);
-    if (!coords || !dragStart) return;
+    if (!coords || !dragStartRef.current) return;
 
-    const points = getLinePoints(dragStart, coords);
+    const points = getLinePoints(dragStartRef.current, coords);
     for (const point of points) {
       if (editorState.tool === 'eraser') {
         drawPixelDirect(point.x, point.y, true);
@@ -825,7 +825,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         drawPixelDirect(point.x, point.y);
       }
     }
-    setDragStart(coords);
+    dragStartRef.current = coords;
 
     // ローカルのcanvasを即時再描画
     drawCanvas();
@@ -917,7 +917,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     window.removeEventListener('mousemove', handleLassoMouseMove);
     window.removeEventListener('mouseup', handleLassoMouseUp);
     setIsDrawing(false);
-    setDragStart(null);
+    dragStartRef.current = null;
     // React状態に反映
     // すべてのレイヤーを新しい参照で返す
     const newLayers = editorState.layers.map((l, i) =>
