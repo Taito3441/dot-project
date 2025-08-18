@@ -138,6 +138,8 @@ const Editor: React.FC = () => {
   const providerRef = useRef<any>();
   const awarenessRef = useRef<any>();
   const [remoteCursors, setRemoteCursors] = useState<{ x: number; y: number; color?: string }[]>([]);
+  const [dirtyRects, setDirtyRects] = useState<{ x: number; y: number; w: number; h: number }[]>([]);
+  const [dirtyTick, setDirtyTick] = useState(0);
   const yLayersRef = useRef<Y.Array<any>>();
   const yCanvasSizeRef = useRef<Y.Map<any>>();
   const isYjsUpdateRef = useRef(false);
@@ -294,7 +296,7 @@ const Editor: React.FC = () => {
       // 先にサイズを取得
       const width = Number(yCanvasSize.get('width')) || 32;
       const height = Number(yCanvasSize.get('height')) || 32;
-      const layersRaw = yLayers.toArray().map((yl: any) => {
+      const layersRaw = yLayers.toArray().map((yl: any, idx: number) => {
         if (yl instanceof Y.Map) {
           const id = yl.get('id');
           const name = yl.get('name');
@@ -302,6 +304,22 @@ const Editor: React.FC = () => {
           const visible = yl.get('visible');
           const yCanvas = yl.get('canvas') as Y.Array<number>;
           const flat = Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray() : [];
+          // 差分監視: yCanvas の observe で矩形を積む
+          try {
+            if (!(yCanvas as any)._partialObserverAttached) {
+              yCanvas.observe((evt: any) => {
+                try {
+                  const rects: { x: number; y: number; w: number; h: number }[] = [];
+                  evt.changes.delta.forEach((d: any) => {
+                    // { retain?: n, delete?: n, insert?: any[] }
+                    let cursor = 0; // running index
+                    // 走査のため、retain 情報を累積
+                  });
+                } catch {}
+              });
+              (yCanvas as any)._partialObserverAttached = true;
+            }
+          } catch {}
           return { id, name, opacity, visible, canvas: flatTo2D(flat, width, height) };
         } else {
           // 旧形式
@@ -339,6 +357,45 @@ const Editor: React.FC = () => {
         }
         return changed ? next : prev;
       });
+      // 矩形を再描画キューに流す（簡易: 変更量が大きい時は全描画）
+      try {
+        if (Array.isArray(events)) {
+          let pixels = 0; const rects: {x:number;y:number;w:number;h:number}[] = [];
+          events.forEach((ev: any) => {
+            const t = ev?.target; if (!t || !(t instanceof Y.Array)) return;
+            const delta = ev?.changes?.delta; if (!Array.isArray(delta)) return;
+            let index = 0;
+            delta.forEach((d: any) => {
+              if (d.retain) index += d.retain;
+              if (d.delete) {
+                const start = index; const count = d.delete; pixels += count;
+                const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
+                const x0 = start % w; const y0 = Math.floor(start / w);
+                const x1 = (start + count - 1) % w; const y1 = Math.floor((start + count - 1) / w);
+                const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
+                const rw = Math.abs(x1 - x0) + 1; const rh = Math.abs(y1 - y0) + 1;
+                rects.push({ x: rx, y: ry, w: rw, h: rh });
+              }
+              if (d.insert) {
+                const start = index; const count = d.insert.length; pixels += count;
+                const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
+                const x0 = start % w; const y0 = Math.floor(start / w);
+                const x1 = (start + count - 1) % w; const y1 = Math.floor((start + count - 1) / w);
+                const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
+                const rw = Math.abs(x1 - x0) + 1; const rh = Math.abs(y1 - y0) + 1;
+                rects.push({ x: rx, y: ry, w: rw, h: rh });
+                index += count;
+              }
+            });
+          });
+          const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
+          if (pixels > (w * h) / 4) {
+            setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
+          } else if (rects.length) {
+            setDirtyRects(rects); setDirtyTick(t => t + 1);
+          }
+        }
+      } catch {}
       if (canvasSize.width !== width || canvasSize.height !== height) {
         setCanvasSize({ width, height });
       }
