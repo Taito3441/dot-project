@@ -132,7 +132,20 @@ const Editor: React.FC = () => {
     // YjsドキュメントとProvider初期化（まず y-websocket、失敗時に y-webrtc フォールバック）
     const ydoc = new Y.Doc();
     const ywsUrl = (import.meta as any).env?.VITE_YWS_URL || 'ws://localhost:1234';
-    let provider: any = new WebsocketProvider(ywsUrl, artworkId, ydoc, { connect: true });
+
+    // Render 等の起動遅延を吸収するため、接続前にヘルスエンドポイントへウォームアップ
+    const warmYws = async () => {
+      try {
+        const healthUrl = ywsUrl.replace(/^ws(s?):\/\//, 'http$1://') + '/healthz';
+        await Promise.race([
+          fetch(healthUrl, { mode: 'no-cors', cache: 'no-store' }),
+          new Promise((resolve) => setTimeout(resolve as any, 1200))
+        ]);
+      } catch {}
+    };
+    try { warmYws().catch(() => {}); } catch {}
+
+    let provider: any = new WebsocketProvider(ywsUrl, artworkId, ydoc, { connect: true, maxBackoffTime: 8000 });
     let wsConnected = false;
     const isConnected = (e: any) => {
       if (!e) return false;
@@ -173,7 +186,7 @@ const Editor: React.FC = () => {
         provider.on('peers', (e: any) => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
         providerRef.current = provider;
       }
-    }, 6000);
+    }, 12000);
     ydocRef.current = ydoc;
     providerRef.current = provider;
     awarenessRef.current = (provider as any).awareness;
