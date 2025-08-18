@@ -350,12 +350,11 @@ const Editor: React.FC = () => {
     yCanvasSize.observeDeep(updateFromYjs as any);
     yRoomTitle.observe(updateFromYjs as any);
 
-    let didInit = false;
     provider.on('synced', async (arg0: { synced: boolean }) => {
-      if (didInit) return;
-      didInit = true;
       const isSynced = arg0.synced;
       if (isSynced) {
+        // 常に Yjs 側のサイズを信頼。未設定のときだけローカルから初期化
+        const hasSize = yCanvasSize.has('width') && yCanvasSize.has('height');
         const yLayersArr = yLayers.toArray();
         const isAllZero = yLayersArr.length === 0 || yLayersArr.every(l => {
           const layer = l as any;
@@ -365,7 +364,7 @@ const Editor: React.FC = () => {
           }
           return true;
         });
-        if (isAllZero) {
+        if (!hasSize || isAllZero) {
           while (yLayers.length > 0) yLayers.delete(0, 1);
           const latest = await PixelArtService.getLatestState(artworkId);
           if (latest && latest.layers && latest.layers.length > 0) {

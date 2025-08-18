@@ -76,7 +76,9 @@ export const Canvas: React.FC<CanvasProps> = ({
       const cache: { x: number; y: number; colorIndex: number }[] = [];
       for (const region of lassoSelections) {
         for (const { x, y } of region) {
-          if (x >= 0 && x < layer.canvas[0].length && y >= 0 && y < layer.canvas.length) {
+          const w = layer.canvas?.[0]?.length || 0;
+          const h = layer.canvas?.length || 0;
+          if (x >= 0 && x < w && y >= 0 && y < h) {
             cache.push({ x, y, colorIndex: layer.canvas[y][x] });
           }
         }
