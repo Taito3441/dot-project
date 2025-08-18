@@ -62,6 +62,34 @@ function mergeLayers(layers: Layer[], palette: string[], width: number, height: 
   return merged;
 }
 
+// 受信データの安全化: キャンバス配列を常に width x height の2次元配列に整形
+function ensure2DCanvas(input: any, width: number, height: number): number[][] {
+  if (Array.isArray(input) && Array.isArray(input[0])) {
+    // すでに2次元配列
+    const arr = input as number[][];
+    // サイズ不一致時は切り詰め/パディング
+    const safe: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      const row = Array.isArray(arr[y]) ? arr[y].slice(0, width) : [];
+      while (row.length < width) row.push(0);
+      safe.push(row);
+    }
+    return safe;
+  }
+  if (Array.isArray(input)) {
+    // 1次元配列 → チャンク
+    const flat = (input as number[]).slice(0, width * height);
+    while (flat.length < width * height) flat.push(0);
+    const canvas: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      canvas.push(flat.slice(y * width, (y + 1) * width));
+    }
+    return canvas;
+  }
+  // 不正データ → 空キャンバス
+  return createEmptyCanvas(width, height);
+}
+
 const AUTO_SAVE_INTERVAL = 30000; // 30秒
 
 const Editor: React.FC = () => {
@@ -222,15 +250,7 @@ const Editor: React.FC = () => {
       const layers: Layer[] = (layersRaw as Layer[])
         .map(l => ({
           ...l,
-          canvas: Array.isArray((l as any).canvas) && Array.isArray((l as any).canvas[0])
-            ? (l as any).canvas
-            : PixelArtService.reshapeCanvas(
-                Array.isArray((l as any).canvas)
-                  ? (l as any).canvas
-                  : Array(width * height).fill(0 as number),
-                width,
-                height
-              ) as any
+          canvas: ensure2DCanvas((l as any).canvas, width, height)
         }))
         .filter(l => {
           if (seen.has(l.id)) return false;
@@ -333,10 +353,7 @@ const Editor: React.FC = () => {
       const layers: Layer[] = (layersRaw as Layer[])
         .map(l => ({
           ...l,
-          canvas: Array.isArray(l.canvas) ? l.canvas : createEmptyCanvas(
-            typeof (l as any).canvas?.[0]?.length === 'number' ? (l as any).canvas[0].length : 32,
-            typeof (l as any).canvas?.length === 'number' ? (l as any).canvas.length : 32
-          )
+          canvas: ensure2DCanvas((l as any).canvas, Number(yCanvasSize.get('width')) || 32, Number(yCanvasSize.get('height')) || 32)
         }))
         .filter(l => {
           if (seen.has(l.id)) return false;
@@ -364,8 +381,8 @@ const Editor: React.FC = () => {
           id: l.id,
           name: l.name,
           canvas: Array.isArray(l.canvas) ? l.canvas.flat() : [],
-          opacity: l.opacity,
-          visible: l.visible,
+          opacity: typeof l.opacity === 'number' && isFinite(l.opacity) ? l.opacity : 1,
+          visible: typeof l.visible === 'boolean' ? l.visible : true,
         }));
         if (layers.length && !layers.every(l => l.canvas.every((v: number) => v === 0))) {
           const data = {
