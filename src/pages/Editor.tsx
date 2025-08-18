@@ -90,6 +90,17 @@ function ensure2DCanvas(input: any, width: number, height: number): number[][] {
   return createEmptyCanvas(width, height);
 }
 
+function flatTo2D(flat: any, width: number, height: number): number[][] {
+  if (!Array.isArray(flat)) return createEmptyCanvas(width, height);
+  const arr = (flat as any[]).slice(0, width * height);
+  while (arr.length < width * height) arr.push(0);
+  const out: number[][] = [];
+  for (let y = 0; y < height; y++) {
+    out.push(arr.slice(y * width, (y + 1) * width));
+  }
+  return out;
+}
+
 const AUTO_SAVE_INTERVAL = 30000; // 30秒
 
 const Editor: React.FC = () => {
@@ -231,8 +242,9 @@ const Editor: React.FC = () => {
       awareness.on('change', handleAwareness);
     }
     // Yjsで同期するデータ構造
-    const yLayers = ydoc.getArray('layers');
-    const yCanvasSize = ydoc.getMap('canvasSize');
+    // Yjsネイティブ構造
+    const yLayers = ydoc.getArray<any>('layers'); // [{id,name,opacity,visible,canvasFlat:Array<number>}] を想定
+    const yCanvasSize = ydoc.getMap<any>('canvasSize');
     const yRoomTitle = ydoc.getText('roomTitle');
     yLayersRef.current = yLayers;
     yCanvasSizeRef.current = yCanvasSize;
@@ -252,7 +264,12 @@ const Editor: React.FC = () => {
       // 先にサイズを取得
       const width = Number(yCanvasSize.get('width')) || 32;
       const height = Number(yCanvasSize.get('height')) || 32;
-      const layersRaw = yLayers.toArray();
+      const layersRaw = yLayers.toArray().map((yl: any) => ({
+        ...yl,
+        canvas: yl?.canvas && Array.isArray(yl.canvas) && Array.isArray(yl.canvas[0])
+          ? yl.canvas
+          : flatTo2D(yl?.canvasFlat, width, height)
+      }));
       const seen = new Set<string>();
       const layers: Layer[] = (layersRaw as Layer[])
         .map(l => ({
@@ -438,16 +455,32 @@ const Editor: React.FC = () => {
     // const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
     // 追加・更新
     (ydocRef.current as any)?.transact(() => {
+      const width = Number(yCanvasSizeRef.current?.get('width')) || 32;
+      const height = Number(yCanvasSizeRef.current?.get('height')) || 32;
       layers.forEach(l => {
-        const idx = (yLayerArr as Layer[]).findIndex(yl => yl.id === l.id);
+        const payload = {
+          id: l.id,
+          name: l.name,
+          opacity: l.opacity,
+          visible: l.visible,
+          canvasFlat: Array.isArray(l.canvas) && Array.isArray(l.canvas[0])
+            ? (l.canvas as any[]).flat()
+            : Array.from(l.canvas as any || []),
+        };
+        // 長さ調整
+        if (payload.canvasFlat.length !== width * height) {
+          const fixed = payload.canvasFlat.slice(0, width * height);
+          while (fixed.length < width * height) fixed.push(0);
+          payload.canvasFlat = fixed;
+        }
+        const arr = yLayers.toArray() as any[];
+        const idx = arr.findIndex(yl => yl?.id === l.id);
         if (idx === -1) {
-          yLayers.push([l]);
+          yLayers.push([payload]);
         } else {
-          // update: 既存レイヤーを置き換え
-          if (JSON.stringify((yLayerArr as Layer[])[idx]) !== JSON.stringify(l)) {
-            yLayers.delete(idx, 1);
-            yLayers.insert(idx, [l]);
-          }
+          // 差分が大きい場合に置換（最適化は後続で）
+          yLayers.delete(idx, 1);
+          yLayers.insert(idx, [payload]);
         }
       });
       // Yjsにしかないレイヤーは削除
