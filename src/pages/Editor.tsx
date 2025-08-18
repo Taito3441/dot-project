@@ -243,12 +243,41 @@ const Editor: React.FC = () => {
     }
     // Yjsで同期するデータ構造
     // Yjsネイティブ構造
-    const yLayers = ydoc.getArray<any>('layers'); // [{id,name,opacity,visible,canvasFlat:Array<number>}] を想定
+    const yLayers = ydoc.getArray<any>('layers'); // 要素は Y.Map 推奨
     const yCanvasSize = ydoc.getMap<any>('canvasSize');
     const yRoomTitle = ydoc.getText('roomTitle');
     yLayersRef.current = yLayers;
     yCanvasSizeRef.current = yCanvasSize;
     yRoomTitleRef.current = yRoomTitle;
+
+    // 既存データを Y.Map へマイグレーション（後方互換）
+    const migrateToYMap = () => {
+      try {
+        for (let i = 0; i < yLayers.length; i++) {
+          const it = yLayers.get(i);
+          // すでに Y.Map ならスキップ
+          if (it instanceof Y.Map) continue;
+          const obj = it as any;
+          const map = new Y.Map<any>();
+          map.set('id', obj?.id || `layer-${Date.now()}-${Math.floor(Math.random()*100000)}`);
+          map.set('name', obj?.name || 'Layer');
+          map.set('opacity', typeof obj?.opacity === 'number' ? obj.opacity : 1);
+          map.set('visible', typeof obj?.visible === 'boolean' ? obj.visible : true);
+          const width = Number((yCanvasSize as any).get('width')) || 32;
+          const height = Number((yCanvasSize as any).get('height')) || 32;
+          const flat = Array.isArray(obj?.canvasFlat)
+            ? obj.canvasFlat
+            : Array.isArray(obj?.canvas)
+              ? (Array.isArray(obj.canvas[0]) ? obj.canvas.flat() : obj.canvas)
+              : Array(width * height).fill(0);
+          const yCanvas = new Y.Array<number>();
+          yCanvas.push(flat);
+          map.set('canvas', yCanvas);
+          yLayers.delete(i, 1);
+          yLayers.insert(i, [map]);
+        }
+      } catch {}
+    };
 
     // Yjs→React state反映
     // Yjs→React 反映。origin==='local'（自分のtransact）由来は無視
@@ -261,15 +290,29 @@ const Editor: React.FC = () => {
       } catch {}
       if (isDrawingRef.current) return;
       isYjsUpdateRef.current = true;
+      migrateToYMap();
       // 先にサイズを取得
       const width = Number(yCanvasSize.get('width')) || 32;
       const height = Number(yCanvasSize.get('height')) || 32;
-      const layersRaw = yLayers.toArray().map((yl: any) => ({
-        ...yl,
-        canvas: yl?.canvas && Array.isArray(yl.canvas) && Array.isArray(yl.canvas[0])
-          ? yl.canvas
-          : flatTo2D(yl?.canvasFlat, width, height)
-      }));
+      const layersRaw = yLayers.toArray().map((yl: any) => {
+        if (yl instanceof Y.Map) {
+          const id = yl.get('id');
+          const name = yl.get('name');
+          const opacity = yl.get('opacity');
+          const visible = yl.get('visible');
+          const yCanvas = yl.get('canvas') as Y.Array<number>;
+          const flat = Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray() : [];
+          return { id, name, opacity, visible, canvas: flatTo2D(flat, width, height) };
+        } else {
+          // 旧形式
+          return {
+            ...yl,
+            canvas: yl?.canvas && Array.isArray(yl.canvas) && Array.isArray(yl.canvas[0])
+              ? yl.canvas
+              : flatTo2D(yl?.canvasFlat, width, height)
+          };
+        }
+      });
       const seen = new Set<string>();
       const layers: Layer[] = (layersRaw as Layer[])
         .map(l => ({
@@ -457,41 +500,95 @@ const Editor: React.FC = () => {
     (ydocRef.current as any)?.transact(() => {
       const width = Number(yCanvasSizeRef.current?.get('width')) || 32;
       const height = Number(yCanvasSizeRef.current?.get('height')) || 32;
-      layers.forEach(l => {
-        const payload = {
-          id: l.id,
-          name: l.name,
-          opacity: l.opacity,
-          visible: l.visible,
-          canvasFlat: Array.isArray(l.canvas) && Array.isArray(l.canvas[0])
-            ? (l.canvas as any[]).flat()
-            : Array.from(l.canvas as any || []),
-        };
-        // 長さ調整
-        if (payload.canvasFlat.length !== width * height) {
-          const fixed = payload.canvasFlat.slice(0, width * height);
-          while (fixed.length < width * height) fixed.push(0);
-          payload.canvasFlat = fixed;
+      // 変更箇所: 現在編集中のレイヤーだけをYjsへ反映（大変更時の全置換を避ける）
+      const current = layers[editorState.currentLayer];
+      if (current) {
+        // Y.Map レイヤーへ部分/全体更新（いまは全体置換）
+        let flat: number[];
+        if (Array.isArray(current.canvas) && Array.isArray(current.canvas[0])) flat = (current.canvas as any[]).flat();
+        else flat = Array.from((current.canvas as any) || []);
+        const fullLen = width * height;
+        if (flat.length !== fullLen) {
+          const fixed = flat.slice(0, fullLen); while (fixed.length < fullLen) fixed.push(0); flat = fixed;
         }
         const arr = yLayers.toArray() as any[];
-        const idx = arr.findIndex(yl => yl?.id === l.id);
+        let idx = -1;
+        for (let i = 0; i < arr.length; i++) {
+          const it = arr[i];
+          const id = it instanceof Y.Map ? it.get('id') : it?.id;
+          if (id === current.id) { idx = i; break; }
+        }
         if (idx === -1) {
-          yLayers.push([payload]);
+          const map = new Y.Map<any>();
+          map.set('id', current.id);
+          map.set('name', current.name);
+          map.set('opacity', current.opacity);
+          map.set('visible', current.visible);
+          const yCanvas = new Y.Array<number>();
+          yCanvas.push(flat);
+          map.set('canvas', yCanvas);
+          yLayers.push([map]);
         } else {
-          // 差分が大きい場合に置換（最適化は後続で）
-          yLayers.delete(idx, 1);
-          yLayers.insert(idx, [payload]);
+          const it = yLayers.get(idx);
+          if (it instanceof Y.Map) {
+            it.set('name', current.name);
+            it.set('opacity', current.opacity);
+            it.set('visible', current.visible);
+            const yCanvas = it.get('canvas') as Y.Array<number>;
+            if (yCanvas && yCanvas instanceof Y.Array) {
+              // 部分更新（差分スプライス）。長さが合わない場合は全置換
+              const oldFlat = yCanvas.toArray();
+              if (oldFlat.length !== flat.length) {
+                yCanvas.delete(0, yCanvas.length);
+                yCanvas.insert(0, flat);
+              } else {
+                // 連続差分区間を抽出
+                const ranges: { start: number; data: number[] }[] = [];
+                let start = -1;
+                for (let i = 0; i < flat.length; i++) {
+                  if (flat[i] !== oldFlat[i]) {
+                    if (start === -1) start = i;
+                  } else if (start !== -1) {
+                    ranges.push({ start, data: flat.slice(start, i) });
+                    start = -1;
+                  }
+                }
+                if (start !== -1) ranges.push({ start, data: flat.slice(start) });
+                // 更新コストが大きい場合は全置換にフォールバック
+                const updates = ranges.reduce((n, r) => n + r.data.length, 0);
+                if (updates > 4096 || ranges.length > 256) {
+                  yCanvas.delete(0, yCanvas.length);
+                  yCanvas.insert(0, flat);
+                } else {
+                  // 末尾から適用（インデックスずれ対策）
+                  for (let r = ranges.length - 1; r >= 0; r--) {
+                    const { start, data } = ranges[r];
+                    yCanvas.delete(start, data.length);
+                    yCanvas.insert(start, data);
+                  }
+                }
+              }
+            } else {
+              const ny = new Y.Array<number>();
+              ny.push(flat);
+              it.set('canvas', ny);
+            }
+          } else {
+            // 旧形式 → 置換
+            const map = new Y.Map<any>();
+            map.set('id', current.id);
+            map.set('name', current.name);
+            map.set('opacity', current.opacity);
+            map.set('visible', current.visible);
+            const yCanvas = new Y.Array<number>();
+            yCanvas.push(flat);
+            map.set('canvas', yCanvas);
+            yLayers.delete(idx, 1);
+            yLayers.insert(idx, [map]);
+          }
         }
-      });
-      // Yjsにしかないレイヤーは削除
-      const toDelete: number[] = [];
-      (yLayerArr as Layer[]).forEach((yl, idx) => {
-        if (!layers.find(l => l.id === yl.id)) {
-          toDelete.push(idx);
-        }
-      });
-      toDelete.sort((a, b) => b - a); // 降順
-      toDelete.forEach(idx => yLayers.delete(idx, 1));
+      }
+      // レイヤー削除は安全のためスキップ（誤検出で全消しされるのを防止）
       // roomTitle（違うときだけdelete→insert）
       const title = editorState.roomTitle || '無題';
       if (yRoomTitle.toString() !== title) {
