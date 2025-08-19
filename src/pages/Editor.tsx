@@ -101,6 +101,66 @@ function flatTo2D(flat: any, width: number, height: number): number[][] {
   return out;
 }
 
+// 矩形をマージ（重なり/隣接を統合）して再描画コストを削減
+function mergeDirtyRects(
+  rects: { x: number; y: number; w: number; h: number }[],
+  canvasWidth: number,
+  canvasHeight: number
+): { x: number; y: number; w: number; h: number }[] {
+  if (!rects.length) return [];
+  // 正規化 + キャンバス境界にクランプ
+  const norm = rects.map(r => {
+    const x = Math.max(0, Math.min(canvasWidth - 1, r.x | 0));
+    const y = Math.max(0, Math.min(canvasHeight - 1, r.y | 0));
+    const w = Math.max(1, Math.min(canvasWidth - x, Math.ceil(r.w)));
+    const h = Math.max(1, Math.min(canvasHeight - y, Math.ceil(r.h)));
+    return { x, y, w, h };
+  });
+
+  // 隣接許容: 1px の隙間はまとめる（太い線や高速描画で分割された区画を統合）
+  const canMerge = (a: any, b: any) => {
+    const ax2 = a.x + a.w - 1;
+    const ay2 = a.y + a.h - 1;
+    const bx2 = b.x + b.w - 1;
+    const by2 = b.y + b.h - 1;
+    // 1px マージンをもたせて重なり判定
+    const ax0 = Math.max(0, a.x - 1), ay0 = Math.max(0, a.y - 1);
+    const ax3 = Math.min(canvasWidth - 1, ax2 + 1), ay3 = Math.min(canvasHeight - 1, ay2 + 1);
+    const bx0 = Math.max(0, b.x - 1), by0 = Math.max(0, b.y - 1);
+    const bx3 = Math.min(canvasWidth - 1, bx2 + 1), by3 = Math.min(canvasHeight - 1, by2 + 1);
+    const overlapX = !(ax3 < bx0 || bx3 < ax0);
+    const overlapY = !(ay3 < by0 || by3 < ay0);
+    return overlapX && overlapY;
+  };
+
+  const mergeTwo = (a: any, b: any) => {
+    const x0 = Math.min(a.x, b.x);
+    const y0 = Math.min(a.y, b.y);
+    const x1 = Math.max(a.x + a.w - 1, b.x + b.w - 1);
+    const y1 = Math.max(a.y + a.h - 1, b.y + b.h - 1);
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  };
+
+  const result: { x: number; y: number; w: number; h: number }[] = [];
+  for (const r of norm) {
+    let merged = r;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < result.length; i++) {
+        if (canMerge(merged, result[i])) {
+          merged = mergeTwo(merged, result[i]);
+          result.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+    result.push(merged);
+  }
+  return result;
+}
+
 const AUTO_SAVE_INTERVAL = 30000; // 30秒
 
 const Editor: React.FC = () => {
@@ -296,7 +356,7 @@ const Editor: React.FC = () => {
       // 先にサイズを取得
       const width = Number(yCanvasSize.get('width')) || 32;
       const height = Number(yCanvasSize.get('height')) || 32;
-      const layersRaw = yLayers.toArray().map((yl: any, idx: number) => {
+      const layersRaw = yLayers.toArray().map((yl: any) => {
         if (yl instanceof Y.Map) {
           const id = yl.get('id');
           const name = yl.get('name');
@@ -307,16 +367,7 @@ const Editor: React.FC = () => {
           // 差分監視: yCanvas の observe で矩形を積む
           try {
             if (!(yCanvas as any)._partialObserverAttached) {
-              yCanvas.observe((evt: any) => {
-                try {
-                  const rects: { x: number; y: number; w: number; h: number }[] = [];
-                  evt.changes.delta.forEach((d: any) => {
-                    // { retain?: n, delete?: n, insert?: any[] }
-                    let cursor = 0; // running index
-                    // 走査のため、retain 情報を累積
-                  });
-                } catch {}
-              });
+              yCanvas.observe(() => {});
               (yCanvas as any)._partialObserverAttached = true;
             }
           } catch {}
@@ -369,7 +420,7 @@ const Editor: React.FC = () => {
               if (d.retain) index += d.retain;
               if (d.delete) {
                 const start = index; const count = d.delete; pixels += count;
-                const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
+                const w = Number(yCanvasSize.get('width')) || 32;
                 const x0 = start % w; const y0 = Math.floor(start / w);
                 const x1 = (start + count - 1) % w; const y1 = Math.floor((start + count - 1) / w);
                 const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
@@ -378,7 +429,7 @@ const Editor: React.FC = () => {
               }
               if (d.insert) {
                 const start = index; const count = d.insert.length; pixels += count;
-                const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
+                const w = Number(yCanvasSize.get('width')) || 32;
                 const x0 = start % w; const y0 = Math.floor(start / w);
                 const x1 = (start + count - 1) % w; const y1 = Math.floor((start + count - 1) / w);
                 const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
@@ -392,7 +443,13 @@ const Editor: React.FC = () => {
           if (pixels > (w * h) / 4) {
             setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
           } else if (rects.length) {
-            setDirtyRects(rects); setDirtyTick(t => t + 1);
+            const merged = mergeDirtyRects(rects, w, h);
+            // まだ多すぎる場合は全描画にフォールバック
+            if (merged.length > 256) {
+              setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
+            } else {
+              setDirtyRects(merged); setDirtyTick(t => t + 1);
+            }
           }
         }
       } catch {}
@@ -538,7 +595,6 @@ const Editor: React.FC = () => {
     const yRoomTitle = yRoomTitleRef.current;
     // layers
     const layers = editorState.layers;
-    const yLayerArr = yLayers.toArray();
     // const yLayerIds = new Set((yLayerArr as Layer[]).map(l => l.id));
     // 追加・更新
     (ydocRef.current as any)?.transact(() => {
@@ -1062,6 +1118,8 @@ const Editor: React.FC = () => {
           showGrid={showGrid}
           onCursorMove={handleCursorMove}
           remoteCursors={remoteCursors}
+          dirtyRects={dirtyRects}
+          dirtyTick={dirtyTick}
         />
       </div>
       {/* 投稿完了ダイアログ */}
