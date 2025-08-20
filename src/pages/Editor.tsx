@@ -260,10 +260,14 @@ const Editor: React.FC = () => {
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
   const [isNarrow, setIsNarrow] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth <= 750 : false);
+  const [viewportWidth, setViewportWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const initSidebarOnceRef = useRef(false);
 
   useEffect(() => {
-    const onResize = () => setIsNarrow(window.innerWidth <= 750);
+    const onResize = () => {
+      setIsNarrow(window.innerWidth <= 750);
+      setViewportWidth(window.innerWidth);
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -1453,6 +1457,14 @@ const Editor: React.FC = () => {
             } catch {}
           }}
           authorId={(user as any)?.uid || 'anon'}
+          viewportWidthForCanvas={
+            isNarrow
+              ? Math.max(240, Math.floor(viewportWidth * 0.85))
+              : Math.max(
+                  480,
+                  Math.floor(viewportWidth - (isLeftOpen ? LEFT_SIDEBAR : 0) - (isRightOpen ? RIGHT_SIDEBAR : 0) - 32) // 16px左右マージン
+                )
+          }
         />
       </div>
       {/* 投稿完了ダイアログ */}
