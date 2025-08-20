@@ -152,17 +152,16 @@ function mergeDirtyRects(
     return { x, y, w, h };
   });
 
-  // 隣接許容: 1px の隙間はまとめる（太い線や高速描画で分割された区画を統合）
+  // 重なりのみをマージ（隣接はマージしない）
   const canMerge = (a: any, b: any) => {
     const ax2 = a.x + a.w - 1;
     const ay2 = a.y + a.h - 1;
     const bx2 = b.x + b.w - 1;
     const by2 = b.y + b.h - 1;
-    // 1px マージンをもたせて重なり判定
-    const ax0 = Math.max(0, a.x - 1), ay0 = Math.max(0, a.y - 1);
-    const ax3 = Math.min(canvasWidth - 1, ax2 + 1), ay3 = Math.min(canvasHeight - 1, ay2 + 1);
-    const bx0 = Math.max(0, b.x - 1), by0 = Math.max(0, b.y - 1);
-    const bx3 = Math.min(canvasWidth - 1, bx2 + 1), by3 = Math.min(canvasHeight - 1, by2 + 1);
+    const ax0 = a.x, ay0 = a.y;
+    const ax3 = ax2, ay3 = ay2;
+    const bx0 = b.x, by0 = b.y;
+    const bx3 = bx2, by3 = by2;
     const overlapX = !(ax3 < bx0 || bx3 < ax0);
     const overlapY = !(ay3 < by0 || by3 < ay0);
     return overlapX && overlapY;
