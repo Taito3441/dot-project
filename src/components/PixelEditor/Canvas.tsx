@@ -29,6 +29,7 @@ interface CanvasProps {
     prev?: { x: number; y: number; value: number }[];
   }) => void;
   authorId?: string;
+  viewportWidthForCanvas?: number;
 }
 
 // type Layer = {
@@ -56,6 +57,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   dirtyTick,
   onStrokeFinished,
   authorId,
+  viewportWidthForCanvas,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -115,8 +117,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   }, [lassoMode]);
 
   // 表示倍率をデバイス幅で調整（初期表示）
-  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
-  const targetPx = viewportW <= 750 ? Math.floor((viewportW * 0.85) / Math.max(width, height)) : Math.floor((viewportW * 0.85) / Math.max(width, height));
+  const viewportW = typeof viewportWidthForCanvas === 'number' ? viewportWidthForCanvas : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const targetPx = Math.floor(viewportW / Math.max(width, height));
   const basePixel = Math.max(4, Math.min(56, targetPx));
   const pixelSize = Math.max(2, Math.floor(basePixel * editorState.zoom));
   const canvasWidth = width * pixelSize;
