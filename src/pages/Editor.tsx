@@ -1205,7 +1205,7 @@ const Editor: React.FC = () => {
   return (
     <div style={{ overflow: 'hidden', height: '100vh' }} className="relative w-full h-full">
       {/* 1. エディタ画面のヘッダー */}
-      <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px', justifyContent: 'space-between' }}>
+      <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px', justifyContent: 'flex-start' }}>
         {/* タイトル・シリアルコード・Canvas Size・Grid・Background・Actionsを横並びで配置 */}
         <div className="flex flex-row items-baseline gap-6 mb-4">
           <input
@@ -1242,18 +1242,6 @@ const Editor: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="px-2 py-1 rounded border text-sm bg-gray-100 hover:bg-gray-200"
-            onClick={() => setIsLeftOpen(o => !o)}
-            title={isLeftOpen ? '左サイドバーを隠す' : '左サイドバーを表示'}
-          >{isLeftOpen ? '◀ 左をたたむ' : '▶ 左を開く'}</button>
-          <button
-            className="px-2 py-1 rounded border text-sm bg-gray-100 hover:bg-gray-200"
-            onClick={() => setIsRightOpen(o => !o)}
-            title={isRightOpen ? '右サイドバーを隠す' : '右サイドバーを表示'}
-          >{isRightOpen ? '右をたたむ ▶' : '右を開く ◀'}</button>
-        </div>
       </div>
       {/* 2. 左サイドバー */}
       {isLeftOpen && (
@@ -1271,7 +1259,25 @@ const Editor: React.FC = () => {
             showGrid={showGrid}
             onShowGridChange={setShowGrid}
           />
+          {/* 左サイドバーたたむハンドル */}
+          <button
+            onClick={() => setIsLeftOpen(false)}
+            title="左サイドバーを隠す"
+            style={{ position: 'absolute', right: -12, top: '50%', transform: 'translateY(-50%)', width: 24, height: 48, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', cursor: 'pointer' }}
+          >
+            ◀
+          </button>
         </div>
+      )}
+      {/* 左サイドバーが閉じているときの開くハンドル */}
+      {!isLeftOpen && (
+        <button
+          onClick={() => setIsLeftOpen(true)}
+          title="左サイドバーを表示"
+          style={{ position: 'fixed', left: 0, top: '50vh', transform: 'translateY(-50%)', zIndex: 11, width: 24, height: 48, borderTopRightRadius: 12, borderBottomRightRadius: 12, border: '1px solid #e5e7eb', background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.08)', cursor: 'pointer' }}
+        >
+          ▶
+        </button>
       )}
       {/* 3. 右サイドバー */}
       {isRightOpen && (
@@ -1364,7 +1370,25 @@ const Editor: React.FC = () => {
             </button>
             </div>
           </div>
+          {/* 右サイドバーたたむハンドル */}
+          <button
+            onClick={() => setIsRightOpen(false)}
+            title="右サイドバーを隠す"
+            style={{ position: 'absolute', left: -12, top: '50%', transform: 'translateY(-50%)', width: 24, height: 48, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', cursor: 'pointer' }}
+          >
+            ▶
+          </button>
         </div>
+      )}
+      {/* 右サイドバーが閉じているときの開くハンドル */}
+      {!isRightOpen && (
+        <button
+          onClick={() => setIsRightOpen(true)}
+          title="右サイドバーを表示"
+          style={{ position: 'fixed', right: 0, top: '50vh', transform: 'translateY(-50%)', zIndex: 11, width: 24, height: 48, borderTopLeftRadius: 12, borderBottomLeftRadius: 12, border: '1px solid #e5e7eb', background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.08)', cursor: 'pointer' }}
+        >
+          ◀
+        </button>
       )}
       {/* 4. 中央エリア */}
       <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: isLeftOpen ? LEFT_SIDEBAR : 0, marginRight: isRightOpen ? RIGHT_SIDEBAR : 0, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
