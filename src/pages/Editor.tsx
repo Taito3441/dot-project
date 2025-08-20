@@ -1245,7 +1245,7 @@ const Editor: React.FC = () => {
       </div>
       {/* 2. 左サイドバー */}
       {isLeftOpen && (
-        <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
           <Toolbar
             editorState={editorState}
             onStateChange={updateEditorState}
@@ -1281,7 +1281,7 @@ const Editor: React.FC = () => {
       )}
       {/* 3. 右サイドバー */}
       {isRightOpen && (
-        <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
           <ColorPalette
             palette={editorState.palette}
             currentColor={editorState.currentColor}
@@ -1391,7 +1391,7 @@ const Editor: React.FC = () => {
         </button>
       )}
       {/* 4. 中央エリア */}
-      <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: isLeftOpen ? LEFT_SIDEBAR : 0, marginRight: isRightOpen ? RIGHT_SIDEBAR : 0, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: 0, marginRight: 0, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
         <Canvas
           editorState={editorState}
           onStateChange={updateEditorState}
