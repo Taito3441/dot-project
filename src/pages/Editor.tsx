@@ -1233,7 +1233,7 @@ const Editor: React.FC = () => {
   const COMMON_HEADER_HEIGHT = 64;
   const EDITOR_HEADER_HEIGHT = 72;
   const LEFT_SIDEBAR = 260;
-  const RIGHT_SIDEBAR = 380;
+  const RIGHT_SIDEBAR = 340;
   return (
     <div style={{ overflow: 'hidden', height: '100vh' }} className="relative w-full h-full">
       {/* 1. エディタ画面のヘッダー */}
