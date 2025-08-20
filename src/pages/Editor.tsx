@@ -1321,7 +1321,7 @@ const Editor: React.FC = () => {
             onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
           />
           {/* レイヤー管理UIもここに移動 */}
-          <div className="w-full" style={{marginTop: 16, width: 380, minWidth: 380, maxWidth: 380}}>
+          <div className="w-full" style={{marginTop: 16, width: 320, minWidth: 320, maxWidth: 320}}>
             <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
             {editorState.layers.slice().reverse().map((layer, revIdx) => {
               const idx = editorState.layers.length - 1 - revIdx;
@@ -1461,9 +1461,12 @@ const Editor: React.FC = () => {
             isNarrow
               ? Math.max(240, Math.floor(viewportWidth * 0.85))
               : (() => {
-                  const side = (isLeftOpen ? LEFT_SIDEBAR : 0) + (isRightOpen ? RIGHT_SIDEBAR : 0);
-                  const raw = viewportWidth - side - 64; // 32px左右マージン
-                  const safe = Math.floor(Math.min(raw, viewportWidth * 0.9));
+                  const margin = 16;
+                  const leftW = isLeftOpen ? LEFT_SIDEBAR : 0;
+                  const rightW = isRightOpen ? RIGHT_SIDEBAR : 0;
+                  const maxSide = Math.max(leftW, rightW);
+                  const allowed = viewportWidth - 2 * (maxSide + margin);
+                  const safe = Math.floor(Math.min(allowed, viewportWidth * 0.9));
                   return Math.max(480, safe);
                 })()
           }
