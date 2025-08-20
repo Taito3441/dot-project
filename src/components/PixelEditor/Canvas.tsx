@@ -118,8 +118,8 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // 表示倍率をデバイス幅で調整（初期表示）
   const viewportW = typeof viewportWidthForCanvas === 'number' ? viewportWidthForCanvas : (typeof window !== 'undefined' ? window.innerWidth : 1200);
-  // 両サイドバーが開いている場合も視認性のため若干余白（5%）を確保
-  const targetPx = Math.floor((viewportW * 0.95) / Math.max(width, height));
+  // 画面に確実に収めるため、キャンバス占有率を抑制（さらに小さめに）
+  const targetPx = Math.floor((viewportW * 0.82) / Math.max(width, height));
   const basePixel = Math.max(4, Math.min(56, targetPx));
   const pixelSize = Math.max(2, Math.floor(basePixel * editorState.zoom));
   const canvasWidth = width * pixelSize;
