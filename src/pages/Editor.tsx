@@ -1461,13 +1461,12 @@ const Editor: React.FC = () => {
             isNarrow
               ? Math.max(240, Math.floor(viewportWidth * 0.85))
               : (() => {
-                  const margin = 16;
+                  const outerMargin = 80; // 余白（左右合計）
                   const leftW = isLeftOpen ? LEFT_SIDEBAR : 0;
                   const rightW = isRightOpen ? RIGHT_SIDEBAR : 0;
-                  const maxSide = Math.max(leftW, rightW);
-                  const allowed = viewportWidth - 2 * (maxSide + margin);
-                  const safe = Math.floor(Math.min(allowed, viewportWidth * 0.9));
-                  return Math.max(480, safe);
+                  const allowed = viewportWidth - leftW - rightW - outerMargin;
+                  const safe = Math.floor(Math.max(360, Math.min(allowed, viewportWidth * 0.88)));
+                  return safe;
                 })()
           }
         />
