@@ -502,7 +502,7 @@ const Editor: React.FC = () => {
         }
         return changed ? next : prev;
       });
-      // 矩形を再描画キューに流す（簡易: 変更量が大きい時は全描画）
+      // 矩形を再描画キューに流す（Y.Array の差分にのみ基づく）
       try {
         if (Array.isArray(events)) {
           let pixels = 0; const rects: {x:number;y:number;w:number;h:number}[] = [];
@@ -534,16 +534,15 @@ const Editor: React.FC = () => {
             });
           });
           const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
-          if (pixels > (w * h) / 4) {
+          if (rects.length) {
+            // 線形状を保つため、小さな矩形はそのまま、
+            // 極端に多数のときのみ保険で重なりマージ
+            const useMerge = rects.length > 512;
+            const out = useMerge ? mergeDirtyRects(rects, w, h) : rects;
+            setDirtyRects(out); setDirtyTick(t => t + 1);
+          } else if (pixels > (w * h) / 2) {
+            // 滅多にないが、大量変更時のみ全体再描画
             setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
-          } else if (rects.length) {
-            const merged = mergeDirtyRects(rects, w, h);
-            // まだ多すぎる場合は全描画にフォールバック
-            if (merged.length > 256) {
-              setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
-            } else {
-              setDirtyRects(merged); setDirtyTick(t => t + 1);
-            }
           }
         }
       } catch {}
@@ -560,34 +559,9 @@ const Editor: React.FC = () => {
     // ストローク着信で受信側の部分再描画を促進
     const onStrokes = (ev: any) => {
       try {
-        const width = Number(yCanvasSize.get('width')) || 32;
-        const height = Number(yCanvasSize.get('height')) || 32;
-        const rects: { x: number; y: number; w: number; h: number }[] = [];
-        const delta = ev?.changes?.delta;
-        if (Array.isArray(delta)) {
-          delta.forEach((d: any) => {
-            if (Array.isArray(d.insert)) {
-              d.insert.forEach((stroke: any) => {
-                if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
-                let minX = width - 1, maxX = 0, minY = height - 1, maxY = 0;
-                for (const p of stroke.points) {
-                  if (typeof p?.x !== 'number' || typeof p?.y !== 'number') continue;
-                  if (p.x < minX) minX = p.x;
-                  if (p.x > maxX) maxX = p.x;
-                  if (p.y < minY) minY = p.y;
-                  if (p.y > maxY) maxY = p.y;
-                }
-                if (minX <= maxX && minY <= maxY) {
-                  rects.push({ x: minX, y: minY, w: (maxX - minX + 1), h: (maxY - minY + 1) });
-                }
-              });
-            }
-          });
-        }
-        if (rects.length) {
-          const merged = mergeDirtyRects(rects, width, height);
-          setDirtyRects(merged); setDirtyTick(t => t + 1);
-        }
+        // 受信直後のストロークで矩形再描画は行わない。
+        // 実データ（yLayers の delta）に基づく部分再描画のみを採用して、
+        // 曲線が矩形に見えるフラッシュを防止する。
         // Undo/Redo: 自分のローカルoriginでpushしたストロークはundoStackへ
         try {
           const isLocal = Array.isArray(ev?.transactions) ? ev.transactions.some((t: any) => t?.origin === 'local') : false;
