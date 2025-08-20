@@ -1460,10 +1460,12 @@ const Editor: React.FC = () => {
           viewportWidthForCanvas={
             isNarrow
               ? Math.max(240, Math.floor(viewportWidth * 0.85))
-              : Math.max(
-                  480,
-                  Math.floor(viewportWidth - (isLeftOpen ? LEFT_SIDEBAR : 0) - (isRightOpen ? RIGHT_SIDEBAR : 0) - 32) // 16px左右マージン
-                )
+              : (() => {
+                  const side = (isLeftOpen ? LEFT_SIDEBAR : 0) + (isRightOpen ? RIGHT_SIDEBAR : 0);
+                  const raw = viewportWidth - side - 64; // 32px左右マージン
+                  const safe = Math.floor(Math.min(raw, viewportWidth * 0.9));
+                  return Math.max(480, safe);
+                })()
           }
         />
       </div>
