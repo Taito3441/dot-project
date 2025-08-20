@@ -101,6 +101,41 @@ function flatTo2D(flat: any, width: number, height: number): number[][] {
   return out;
 }
 
+// フラット配列に1px打つ（境界チェック込）
+function setPixelFlat(flat: number[], width: number, height: number, x: number, y: number, value: number) {
+  if (x < 0 || y < 0 || x >= width || y >= height) return;
+  flat[y * width + x] = value;
+}
+
+// ブラシ/消しゴム 用: 2点間を線で塗る（Bresenham風）
+function drawLineOnFlat(flat: number[], width: number, height: number, x0: number, y0: number, x1: number, y1: number, value: number) {
+  let dx = Math.abs(x1 - x0);
+  let sx = x0 < x1 ? 1 : -1;
+  let dy = -Math.abs(y1 - y0);
+  let sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  while (true) {
+    setPixelFlat(flat, width, height, x0, y0, value);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+function applyStrokeToFlat(flat: number[], width: number, height: number, stroke: { points: {x:number;y:number}[]; colorIndex: number; erase?: boolean }) {
+  if (!Array.isArray(stroke.points) || stroke.points.length === 0) return;
+  const val = stroke.erase ? 0 : (typeof stroke.colorIndex === 'number' && stroke.colorIndex > 0 ? stroke.colorIndex : 0);
+  // 連続点を線で結んで塗る
+  let prev = stroke.points[0];
+  setPixelFlat(flat, width, height, prev.x | 0, prev.y | 0, val);
+  for (let i = 1; i < stroke.points.length; i++) {
+    const p = stroke.points[i];
+    drawLineOnFlat(flat, width, height, prev.x | 0, prev.y | 0, p.x | 0, p.y | 0, val);
+    prev = p;
+  }
+}
+
 // 矩形をマージ（重なり/隣接を統合）して再描画コストを削減
 function mergeDirtyRects(
   rects: { x: number; y: number; w: number; h: number }[],
@@ -162,6 +197,9 @@ function mergeDirtyRects(
 }
 
 const AUTO_SAVE_INTERVAL = 30000; // 30秒
+const MAX_STROKES_BEFORE_SNAPSHOT = 2000; // この件数を超えたらスナップショット
+const KEEP_RECENT_STROKES = 256; // トリム後に残す最近のストローク数
+const SNAPSHOT_MIN_INTERVAL_MS = 30000; // スナップショットの最小間隔
 
 const Editor: React.FC = () => {
   // すべてのフックを最上部で宣言
@@ -202,6 +240,8 @@ const Editor: React.FC = () => {
   const [dirtyTick, setDirtyTick] = useState(0);
   const yLayersRef = useRef<Y.Array<any>>();
   const yCanvasSizeRef = useRef<Y.Map<any>>();
+  const yStrokesRef = useRef<Y.Array<any>>();
+  const ySnapshotRef = useRef<Y.Map<any>>();
   const isYjsUpdateRef = useRef(false);
   const [backgroundPattern, setBackgroundPattern] = useState<'light' | 'dark'>('light');
   const [showGrid, setShowGrid] = useState(true);
@@ -216,6 +256,10 @@ const Editor: React.FC = () => {
   // const [lastAutoSave, setLastAutoSave] = useState<number>(Date.now());
   const [lassoMenuAction, setLassoMenuAction] = useState<null | 'copy' | 'delete' | 'move'>(null);
   const [showPostComplete, setShowPostComplete] = useState(false);
+  const undoQueueRef = useRef<any[]>([]);
+  const redoQueueRef = useRef<any[]>([]);
+  const [isLeftOpen, setIsLeftOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(true);
 
   // 新規作成時はリダイレクト
   useEffect(() => {
@@ -308,9 +352,60 @@ const Editor: React.FC = () => {
     const yLayers = ydoc.getArray<any>('layers'); // 要素は Y.Map 推奨
     const yCanvasSize = ydoc.getMap<any>('canvasSize');
     const yRoomTitle = ydoc.getText('roomTitle');
+    const yStrokes = ydoc.getArray<any>('strokes'); // ストロークログ
+    const ySnapshot = ydoc.getMap<any>('snapshot'); // スナップショット
     yLayersRef.current = yLayers;
     yCanvasSizeRef.current = yCanvasSize;
     yRoomTitleRef.current = yRoomTitle;
+    yStrokesRef.current = yStrokes;
+    ySnapshotRef.current = ySnapshot;
+
+    const maybeSnapshotAndTrim = () => {
+      try {
+        const ydoc = ydocRef.current;
+        const yLayers = yLayersRef.current;
+        const yCanvasSize = yCanvasSizeRef.current;
+        const yStrokes = yStrokesRef.current;
+        const ySnapshot = ySnapshotRef.current;
+        if (!ydoc || !yLayers || !yCanvasSize || !yStrokes || !ySnapshot) return;
+        const now = Date.now();
+        const lastTs = Number(ySnapshot.get('ts')) || 0;
+        const needByTime = now - lastTs >= SNAPSHOT_MIN_INTERVAL_MS;
+        const needByCount = yStrokes.length > MAX_STROKES_BEFORE_SNAPSHOT;
+        if (!needByTime && !needByCount) return;
+        (ydoc as any).transact(() => {
+          // 現在のキャンバス状態をスナップショットに固める
+          const width = Number(yCanvasSize.get('width')) || 32;
+          const height = Number(yCanvasSize.get('height')) || 32;
+          const layersRaw = yLayers.toArray();
+          const layers = layersRaw.map((l: any) => {
+            const id = l instanceof Y.Map ? l.get('id') : l?.id;
+            const name = l instanceof Y.Map ? l.get('name') : l?.name;
+            const opacity = l instanceof Y.Map ? l.get('opacity') : (typeof l?.opacity === 'number' ? l.opacity : 1);
+            const visible = l instanceof Y.Map ? l.get('visible') : (typeof l?.visible === 'boolean' ? l.visible : true);
+            const flat = (() => {
+              if (l instanceof Y.Map) {
+                const yCanvas = l.get('canvas') as Y.Array<number>;
+                return Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray() : Array(width * height).fill(0);
+              }
+              if (Array.isArray(l?.canvas)) return l.canvas.flat();
+              if (Array.isArray(l?.canvasFlat)) return l.canvasFlat;
+              return Array(width * height).fill(0);
+            })();
+            // 長さ調整
+            const fixed = flat.slice(0, width * height);
+            while (fixed.length < width * height) fixed.push(0);
+            return { id, name, opacity, visible, canvas: fixed };
+          });
+          const snapshotData = { width, height, layers };
+          ySnapshot.set('data', snapshotData);
+          ySnapshot.set('ts', now);
+          // ローテーション: 古いストロークを先頭から削除
+          const over = Math.max(0, yStrokes.length - KEEP_RECENT_STROKES);
+          if (over > 0) yStrokes.delete(0, over);
+        }, 'local');
+      } catch {}
+    };
 
     // 既存データを Y.Map へマイグレーション（後方互換）
     const migrateToYMap = () => {
@@ -463,6 +558,60 @@ const Editor: React.FC = () => {
     yLayers.observeDeep(updateFromYjs as any);
     yCanvasSize.observeDeep(updateFromYjs as any);
     yRoomTitle.observe(updateFromYjs as any);
+    // ストローク着信で受信側の部分再描画を促進
+    const onStrokes = (ev: any) => {
+      try {
+        const width = Number(yCanvasSize.get('width')) || 32;
+        const height = Number(yCanvasSize.get('height')) || 32;
+        const rects: { x: number; y: number; w: number; h: number }[] = [];
+        const delta = ev?.changes?.delta;
+        if (Array.isArray(delta)) {
+          delta.forEach((d: any) => {
+            if (Array.isArray(d.insert)) {
+              d.insert.forEach((stroke: any) => {
+                if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+                let minX = width - 1, maxX = 0, minY = height - 1, maxY = 0;
+                for (const p of stroke.points) {
+                  if (typeof p?.x !== 'number' || typeof p?.y !== 'number') continue;
+                  if (p.x < minX) minX = p.x;
+                  if (p.x > maxX) maxX = p.x;
+                  if (p.y < minY) minY = p.y;
+                  if (p.y > maxY) maxY = p.y;
+                }
+                if (minX <= maxX && minY <= maxY) {
+                  rects.push({ x: minX, y: minY, w: (maxX - minX + 1), h: (maxY - minY + 1) });
+                }
+              });
+            }
+          });
+        }
+        if (rects.length) {
+          const merged = mergeDirtyRects(rects, width, height);
+          setDirtyRects(merged); setDirtyTick(t => t + 1);
+        }
+        // Undo/Redo: 自分のローカルoriginでpushしたストロークはundoStackへ
+        try {
+          const isLocal = Array.isArray(ev?.transactions) ? ev.transactions.some((t: any) => t?.origin === 'local') : false;
+          if (isLocal) {
+            const ins = [] as any[];
+            const delta = ev?.changes?.delta;
+            if (Array.isArray(delta)) {
+              delta.forEach((d: any) => {
+                if (Array.isArray(d.insert)) ins.push(...d.insert);
+              });
+            }
+            if (ins.length) {
+              undoQueueRef.current.push(...ins);
+              // 新規ストローク発生時はリドゥスタックをクリア
+              redoQueueRef.current = [];
+            }
+          }
+        } catch {}
+        // しきい値超過/インターバル経過でスナップショット + ローテーション
+        maybeSnapshotAndTrim();
+      } catch {}
+    };
+    yStrokes.observe(onStrokes as any);
 
     provider.on('synced', async (arg0: { synced: boolean }) => {
       const isSynced = arg0.synced;
@@ -471,27 +620,105 @@ const Editor: React.FC = () => {
       const hasSize = yCanvasSize.has('width') && yCanvasSize.has('height');
       const hasLayers = yLayers.length > 0;
       if (!hasSize && !hasLayers) {
-        const latest = await PixelArtService.getLatestState(artworkId);
-        if (latest && latest.layers && latest.layers.length > 0) {
-          const layers: Layer[] = (latest.layers as import('../types').LayerFirestore[]).map((l: import('../types').LayerFirestore) => ({
-            ...l,
-            canvas: PixelArtService.reshapeCanvas(l.canvas, latest.width, latest.height) as number[][]
-          }));
-          for (const layer of layers.slice(0, latest.layersCount || layers.length)) {
-            yLayers.push([layer]);
-          }
-          yCanvasSize.set('width', latest.width);
-          yCanvasSize.set('height', latest.height);
-          if (yRoomTitle.length === 0) yRoomTitle.insert(0, latest.roomTitle || '無題');
+        // 1. スナップショットがあれば最優先で適用
+        const snap = ySnapshot.get('data') as any;
+        const snapTs = Number(ySnapshot.get('ts')) || 0;
+        if (snap && Array.isArray(snap.layers) && typeof snap.width === 'number' && typeof snap.height === 'number') {
+          (ydoc as any).transact(() => {
+            // サイズ
+            yCanvasSize.set('width', snap.width);
+            yCanvasSize.set('height', snap.height);
+            // レイヤー
+            const toInsert: any[] = [];
+            for (const l of snap.layers) {
+              const map = new Y.Map<any>();
+              map.set('id', l.id);
+              map.set('name', l.name);
+              map.set('opacity', typeof l.opacity === 'number' ? l.opacity : 1);
+              map.set('visible', typeof l.visible === 'boolean' ? l.visible : true);
+              const yCanvas = new Y.Array<number>();
+              const flat = Array.isArray(l.canvas) ? l.canvas.slice(0, snap.width * snap.height) : Array(snap.width * snap.height).fill(0);
+              while (flat.length < snap.width * snap.height) flat.push(0);
+              yCanvas.push(flat);
+              map.set('canvas', yCanvas);
+              toInsert.push(map);
+            }
+            if (toInsert.length) yLayers.push(toInsert);
+            if (yRoomTitle.length === 0) yRoomTitle.insert(0, '無題');
+          }, 'local');
+          // 2. 残ストロークをスナップショット時刻以降で適用
+          try {
+            const strokes = yStrokes.toArray();
+            if (Array.isArray(strokes) && strokes.length) {
+              const width = snap.width, height = snap.height;
+              const layerIdToIndex = new Map<string, number>();
+              for (let i = 0; i < yLayers.length; i++) {
+                const it = yLayers.get(i);
+                const id = it instanceof Y.Map ? it.get('id') : it?.id;
+                if (id) layerIdToIndex.set(id, i);
+              }
+              // レイヤーごとの作業用フラット配列
+              const work: Record<string, number[]> = {};
+              const ensureWork = (layerId: string) => {
+                if (!work[layerId]) {
+                  const idx = layerIdToIndex.get(layerId);
+                  if (idx === undefined) return null;
+                  const it = yLayers.get(idx) as Y.Map<any>;
+                  const yCanvas = it.get('canvas') as Y.Array<number>;
+                  const base = Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray().slice(0) : Array(width * height).fill(0);
+                  if (base.length !== width * height) {
+                    const fixed = base.slice(0, width * height); while (fixed.length < width * height) fixed.push(0);
+                    work[layerId] = fixed;
+                  } else {
+                    work[layerId] = base;
+                  }
+                }
+                return work[layerId];
+              };
+              for (const stroke of strokes) {
+                if (!stroke || typeof stroke.ts !== 'number' || stroke.ts <= snapTs) continue;
+                const layerId = String(stroke.layerId || '');
+                if (!layerId || !Array.isArray(stroke.points) || stroke.points.length === 0) continue;
+                const flat = ensureWork(layerId);
+                if (!flat) continue;
+                applyStrokeToFlat(flat, width, height, { points: stroke.points, colorIndex: Number(stroke.colorIndex) || 0, erase: Boolean(stroke.erase) });
+              }
+              // 反映
+              (ydoc as any).transact(() => {
+                for (const [layerId, flat] of Object.entries(work)) {
+                  const idx = layerIdToIndex.get(layerId);
+                  if (idx === undefined) continue;
+                  const it = yLayers.get(idx) as Y.Map<any>;
+                  const yCanvas = it.get('canvas') as Y.Array<number>;
+                  if (yCanvas) { yCanvas.delete(0, yCanvas.length); yCanvas.insert(0, flat); }
+                }
+              }, 'local');
+            }
+          } catch {}
         } else {
-          const initState = initialEditorState();
-          yLayers.push([{
-            ...initState.layers[0],
-            canvas: initState.layers[0].canvas.flat(),
-          }]);
-          yCanvasSize.set('width', initState.canvas[0].length);
-          yCanvasSize.set('height', initState.canvas.length);
-          if (yRoomTitle.length === 0) yRoomTitle.insert(0, initState.roomTitle);
+          // 3. スナップショットが無ければ従来どおり Firestore か初期値
+          const latest = await PixelArtService.getLatestState(artworkId);
+          if (latest && latest.layers && latest.layers.length > 0) {
+            const layers: Layer[] = (latest.layers as import('../types').LayerFirestore[]).map((l: import('../types').LayerFirestore) => ({
+              ...l,
+              canvas: PixelArtService.reshapeCanvas(l.canvas, latest.width, latest.height) as number[][]
+            }));
+            for (const layer of layers.slice(0, latest.layersCount || layers.length)) {
+              yLayers.push([layer]);
+            }
+            yCanvasSize.set('width', latest.width);
+            yCanvasSize.set('height', latest.height);
+            if (yRoomTitle.length === 0) yRoomTitle.insert(0, latest.roomTitle || '無題');
+          } else {
+            const initState = initialEditorState();
+            yLayers.push([{
+              ...initState.layers[0],
+              canvas: initState.layers[0].canvas.flat(),
+            }]);
+            yCanvasSize.set('width', initState.canvas[0].length);
+            yCanvasSize.set('height', initState.canvas.length);
+            if (yRoomTitle.length === 0) yRoomTitle.insert(0, initState.roomTitle);
+          }
         }
       }
       // 既存データがある場合は単に反映
@@ -567,6 +794,7 @@ const Editor: React.FC = () => {
       yLayers.unobserveDeep(updateFromYjs);
       yCanvasSize.unobserveDeep(updateFromYjs);
       yRoomTitle.unobserve(updateFromYjs);
+      try { yStrokes.unobserve(onStrokes as any); } catch {}
       if ((provider as any).destroy) (provider as any).destroy();
       ydoc.destroy();
     };
@@ -825,6 +1053,66 @@ const Editor: React.FC = () => {
     );
   };
 
+  const applyStrokeDelta = (base: number[], width: number, height: number, stroke: any, reverse = false) => {
+    if (!base) return;
+    if (!reverse) {
+      applyStrokeToFlat(base, width, height, { points: stroke.points || [], colorIndex: Number(stroke.colorIndex) || 0, erase: Boolean(stroke.erase) });
+    } else {
+      // 元の値で巻き戻す
+      const prev = Array.isArray(stroke.prev) ? stroke.prev : [];
+      for (const p of prev) {
+        const x = Number(p?.x) | 0; const y = Number(p?.y) | 0; const val = Number(p?.value) | 0;
+        if (x >= 0 && y >= 0 && x < width && y < height) base[y * width + x] = val;
+      }
+    }
+  };
+
+  const requestUndo = () => {
+    try {
+      const ydoc = ydocRef.current; const yLayers = yLayersRef.current; const yCanvasSize = yCanvasSizeRef.current; const yStrokes = yStrokesRef.current;
+      if (!ydoc || !yLayers || !yCanvasSize || !yStrokes) return;
+      const width = Number(yCanvasSize.get('width')) || 32;
+      const height = Number(yCanvasSize.get('height')) || 32;
+      const stroke = undoQueueRef.current.pop();
+      if (!stroke) return;
+      const arr = yLayers.toArray();
+      const idx = arr.findIndex((it: any) => (it instanceof Y.Map ? it.get('id') : it?.id) === stroke.layerId);
+      if (idx < 0) return;
+      const it = yLayers.get(idx) as any;
+      const yCanvas = it.get('canvas') as Y.Array<number>;
+      const flat = Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray() : Array(width * height).fill(0);
+      applyStrokeDelta(flat, width, height, stroke, true);
+      (ydoc as any).transact(() => {
+        yCanvas.delete(0, yCanvas.length);
+        yCanvas.insert(0, flat);
+      }, 'local');
+      redoQueueRef.current.push(stroke);
+    } catch {}
+  };
+
+  const requestRedo = () => {
+    try {
+      const ydoc = ydocRef.current; const yLayers = yLayersRef.current; const yCanvasSize = yCanvasSizeRef.current; const yStrokes = yStrokesRef.current;
+      if (!ydoc || !yLayers || !yCanvasSize || !yStrokes) return;
+      const width = Number(yCanvasSize.get('width')) || 32;
+      const height = Number(yCanvasSize.get('height')) || 32;
+      const stroke = redoQueueRef.current.pop();
+      if (!stroke) return;
+      const arr = yLayers.toArray();
+      const idx = arr.findIndex((it: any) => (it instanceof Y.Map ? it.get('id') : it?.id) === stroke.layerId);
+      if (idx < 0) return;
+      const it = yLayers.get(idx) as any;
+      const yCanvas = it.get('canvas') as Y.Array<number>;
+      const flat = Array.isArray(yCanvas?.toArray()) ? yCanvas.toArray() : Array(width * height).fill(0);
+      applyStrokeDelta(flat, width, height, stroke, false);
+      (ydoc as any).transact(() => {
+        yCanvas.delete(0, yCanvas.length);
+        yCanvas.insert(0, flat);
+      }, 'local');
+      undoQueueRef.current.push(stroke);
+    } catch {}
+  };
+
   const handleClear = () => {
     if (confirm('キャンバスをクリアしますか？この操作は元に戻せません。')) {
       const newCanvas = createEmptyCanvas(canvasSize.width, canvasSize.height);
@@ -903,26 +1191,10 @@ const Editor: React.FC = () => {
             e.preventDefault();
             if (e.shiftKey) {
               // Redo
-              if (editorState.historyIndex < editorState.history.length - 1) {
-                const newIndex = editorState.historyIndex + 1;
-                const newLayers = editorState.history[newIndex];
-                updateEditorState({
-                  layers: newLayers,
-                  canvas: newLayers[editorState.currentLayer]?.canvas || newLayers[0].canvas,
-                  historyIndex: newIndex,
-                });
-              }
+              requestRedo();
             } else {
               // Undo
-              if (editorState.historyIndex > 0) {
-                const newIndex = editorState.historyIndex - 1;
-                const newLayers = editorState.history[newIndex];
-                updateEditorState({
-                  layers: newLayers,
-                  canvas: newLayers[editorState.currentLayer]?.canvas || newLayers[0].canvas,
-                  historyIndex: newIndex,
-                });
-              }
+              requestUndo();
             }
             break;
           case 's':
@@ -960,7 +1232,7 @@ const Editor: React.FC = () => {
   return (
     <div style={{ overflow: 'hidden', height: '100vh' }} className="relative w-full h-full">
       {/* 1. エディタ画面のヘッダー */}
-      <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px' }}>
+      <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px', justifyContent: 'space-between' }}>
         {/* タイトル・シリアルコード・Canvas Size・Grid・Background・Actionsを横並びで配置 */}
         <div className="flex flex-row items-baseline gap-6 mb-4">
           <input
@@ -997,34 +1269,49 @@ const Editor: React.FC = () => {
             </div>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-2 py-1 rounded border text-sm bg-gray-100 hover:bg-gray-200"
+            onClick={() => setIsLeftOpen(o => !o)}
+            title={isLeftOpen ? '左サイドバーを隠す' : '左サイドバーを表示'}
+          >{isLeftOpen ? '◀ 左をたたむ' : '▶ 左を開く'}</button>
+          <button
+            className="px-2 py-1 rounded border text-sm bg-gray-100 hover:bg-gray-200"
+            onClick={() => setIsRightOpen(o => !o)}
+            title={isRightOpen ? '右サイドバーを隠す' : '右サイドバーを表示'}
+          >{isRightOpen ? '右をたたむ ▶' : '右を開く ◀'}</button>
+        </div>
       </div>
       {/* 2. 左サイドバー */}
-      <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
-        <Toolbar
-          editorState={editorState}
-          onStateChange={updateEditorState}
-          onSave={handleSave}
-          onDownload={handleDownload}
-          onClear={handleClear}
-          onCanvasSizeChange={handleCanvasSizeChange}
-          onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
-          backgroundPattern={backgroundPattern}
-          onBackgroundPatternChange={setBackgroundPattern}
-          showGrid={showGrid}
-          onShowGridChange={setShowGrid}
-        />
-      </div>
+      {isLeftOpen && (
+        <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+          <Toolbar
+            editorState={editorState}
+            onStateChange={updateEditorState}
+            onSave={handleSave}
+            onDownload={handleDownload}
+            onClear={handleClear}
+            onCanvasSizeChange={handleCanvasSizeChange}
+            onLassoMenuAction={setLassoMenuAction as (action: 'copy' | 'delete' | 'move') => void}
+            backgroundPattern={backgroundPattern}
+            onBackgroundPatternChange={setBackgroundPattern}
+            showGrid={showGrid}
+            onShowGridChange={setShowGrid}
+          />
+        </div>
+      )}
       {/* 3. 右サイドバー */}
-      <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
-        <ColorPalette
-          palette={editorState.palette}
-          currentColor={editorState.currentColor}
-          onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
-          onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
-        />
-        {/* レイヤー管理UIもここに移動 */}
-        <div className="w-full" style={{marginTop: 16, width: 380, minWidth: 380, maxWidth: 380}}>
-          <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
+      {isRightOpen && (
+        <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 10, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.04)', overflow: 'auto' }}>
+          <ColorPalette
+            palette={editorState.palette}
+            currentColor={editorState.currentColor}
+            onColorChange={(colorIndex) => updateEditorState({ currentColor: colorIndex })}
+            onPaletteChange={(newPalette) => updateEditorState({ palette: newPalette })}
+          />
+          {/* レイヤー管理UIもここに移動 */}
+          <div className="w-full" style={{marginTop: 16, width: 380, minWidth: 380, maxWidth: 380}}>
+            <div className="p-3 bg-white rounded-xl shadow flex flex-col gap-3 overflow-y-auto max-h-[400px] border border-gray-200" style={{width: '100%'}}>
             {editorState.layers.slice().reverse().map((layer, revIdx) => {
               const idx = editorState.layers.length - 1 - revIdx;
               return (
@@ -1102,11 +1389,12 @@ const Editor: React.FC = () => {
             >
               レイヤーを追加
             </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       {/* 4. 中央エリア */}
-      <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: LEFT_SIDEBAR, marginRight: RIGHT_SIDEBAR, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ marginTop: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, marginLeft: isLeftOpen ? LEFT_SIDEBAR : 0, marginRight: isRightOpen ? RIGHT_SIDEBAR : 0, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'hidden' }}>
         <Canvas
           editorState={editorState}
           onStateChange={updateEditorState}
@@ -1120,6 +1408,26 @@ const Editor: React.FC = () => {
           remoteCursors={remoteCursors}
           dirtyRects={dirtyRects}
           dirtyTick={dirtyTick}
+          onStrokeFinished={(stroke: { id: string; layerId: string; tool: string; colorIndex: number; erase?: boolean; points: {x:number;y:number}[]; ts: number; authorId?: string; prev?: {x:number;y:number;value:number}[]; }) => {
+            try {
+              const ydoc = ydocRef.current; const yStrokes = yStrokesRef.current;
+              if (!ydoc || !yStrokes) return;
+              (ydoc as any).transact(() => {
+                yStrokes.push([{
+                  id: stroke.id,
+                  layerId: stroke.layerId,
+                  tool: stroke.tool,
+                  colorIndex: stroke.colorIndex,
+                  erase: stroke.erase,
+                  points: stroke.points,
+                  ts: stroke.ts,
+                  authorId: stroke.authorId,
+                  prev: stroke.prev,
+                }]);
+              }, 'local');
+            } catch {}
+          }}
+          authorId={(user as any)?.uid || 'anon'}
         />
       </div>
       {/* 投稿完了ダイアログ */}

@@ -17,6 +17,18 @@ interface CanvasProps {
   // 受信側の部分再描画用
   dirtyRects?: { x: number; y: number; w: number; h: number }[];
   dirtyTick?: number; // 変更カウンタ
+  onStrokeFinished?: (stroke: {
+    id: string;
+    layerId: string;
+    tool: string;
+    colorIndex: number;
+    erase?: boolean;
+    points: { x: number; y: number }[];
+    ts: number;
+    authorId?: string;
+    prev?: { x: number; y: number; value: number }[];
+  }) => void;
+  authorId?: string;
 }
 
 // type Layer = {
@@ -42,6 +54,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   remoteCursors,
   dirtyRects,
   dirtyTick,
+  onStrokeFinished,
+  authorId,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -103,6 +117,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
   const canvasWidth = width * pixelSize;
   const canvasHeight = height * pixelSize;
+  const strokePointsRef = useRef<{ x: number; y: number }[]>([]);
+  const prevValuesRef = useRef<Map<number, number>>(new Map());
 
   useEffect(() => {
     // 選択中レイヤーのcanvasで初期化
@@ -533,12 +549,20 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const drawPixelDirect = (x: number, y: number, erase = false) => {
+    // 変更前の値を一度だけ記録
+    const key = y * width + x;
+    if (!prevValuesRef.current.has(key)) {
+      const before = canvasDataRef.current?.[y]?.[x] ?? 0;
+      prevValuesRef.current.set(key, before);
+    }
     if (erase) {
       canvasDataRef.current[y][x] = 0;
+      strokePointsRef.current.push({ x, y });
       return;
     }
     const colorIndex = editorState.currentColor;
     canvasDataRef.current[y][x] = colorIndex;
+    strokePointsRef.current.push({ x, y });
   };
 
   // --- ドキュメント全体でmousemove/upを監視する投げ縄 ---
@@ -714,6 +738,9 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     setIsDrawing(true);
+    // ストローク初期化（ブラシ/消しゴムなど）
+    strokePointsRef.current = [];
+    prevValuesRef.current = new Map();
     dragStartRef.current = coords;
 
     if (editorState.tool === 'fill') {
@@ -1001,6 +1028,34 @@ export const Canvas: React.FC<CanvasProps> = ({
     );
     onStateChange({ layers: newLayers }); // ここでのみ同期
     saveToHistory();
+    // ストローク完了通知（必要な場合のみ）
+    try {
+      if (onStrokeFinished && strokePointsRef.current.length > 0) {
+        const current = editorState.layers[editorState.currentLayer];
+        if (current && current.id) {
+          const prevArr: { x: number; y: number; value: number }[] = [];
+          for (const [k, v] of prevValuesRef.current.entries()) {
+            const y = Math.floor(k / width);
+            const x = k % width;
+            prevArr.push({ x, y, value: v });
+          }
+          const stroke = {
+            id: `stroke-${Date.now()}-${Math.floor(Math.random()*100000)}`,
+            layerId: current.id,
+            tool: editorState.tool,
+            colorIndex: editorState.currentColor,
+            erase: editorState.tool === 'eraser',
+            points: strokePointsRef.current.slice(0, 8192),
+            ts: Date.now(),
+            authorId,
+            prev: prevArr,
+          };
+          onStrokeFinished(stroke);
+        }
+      }
+    } catch {}
+    strokePointsRef.current = [];
+    prevValuesRef.current = new Map();
     // コピー確定はEnter/ダブルクリックのみ
   };
 
