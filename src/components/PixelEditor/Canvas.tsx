@@ -114,7 +114,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     // eslint-disable-next-line
   }, [lassoMode]);
 
-  const pixelSize = Math.min(720 / Math.max(width, height) * editorState.zoom, 56);
+  // 表示倍率をデバイス幅で調整（初期表示）
+  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+  const targetPx = viewportW <= 750 ? Math.floor((viewportW * 0.85) / Math.max(width, height)) : Math.floor((viewportW * 0.85) / Math.max(width, height));
+  const basePixel = Math.max(4, Math.min(56, targetPx));
+  const pixelSize = Math.max(2, Math.floor(basePixel * editorState.zoom));
   const canvasWidth = width * pixelSize;
   const canvasHeight = height * pixelSize;
   const strokePointsRef = useRef<{ x: number; y: number }[]>([]);

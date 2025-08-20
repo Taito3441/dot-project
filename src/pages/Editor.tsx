@@ -259,6 +259,34 @@ const Editor: React.FC = () => {
   const redoQueueRef = useRef<any[]>([]);
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
+  const [isNarrow, setIsNarrow] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth <= 750 : false);
+  const initSidebarOnceRef = useRef(false);
+
+  useEffect(() => {
+    const onResize = () => setIsNarrow(window.innerWidth <= 750);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // 初期表示の開閉状態をデバイス幅で決定（1回だけ）
+  useEffect(() => {
+    if (initSidebarOnceRef.current) return;
+    if (isNarrow) {
+      setIsLeftOpen(false);
+      setIsRightOpen(false);
+    } else {
+      setIsLeftOpen(true);
+      setIsRightOpen(true);
+    }
+    initSidebarOnceRef.current = true;
+    // eslint-disable-next-line
+  }, [isNarrow]);
+
+  // 狭幅では片側のみオープンにする
+  useEffect(() => {
+    if (!isNarrow) return;
+    if (isLeftOpen && isRightOpen) setIsRightOpen(false);
+  }, [isNarrow, isLeftOpen, isRightOpen]);
 
   // 新規作成時はリダイレクト
   useEffect(() => {
@@ -1245,7 +1273,7 @@ const Editor: React.FC = () => {
       </div>
       {/* 2. 左サイドバー */}
       {isLeftOpen && (
-        <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: LEFT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', left: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: isNarrow ? '100vw' as any : LEFT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
           <Toolbar
             editorState={editorState}
             onStateChange={updateEditorState}
@@ -1281,7 +1309,7 @@ const Editor: React.FC = () => {
       )}
       {/* 3. 右サイドバー */}
       {isRightOpen && (
-        <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: RIGHT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
+        <div style={{ position: 'fixed', right: 0, top: COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT, height: `calc(100vh - ${COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT}px)`, width: isNarrow ? '100vw' as any : RIGHT_SIDEBAR, zIndex: 20, background: '#fff', boxShadow: '-2px 0 8px rgba(0,0,0,0.12)', overflow: 'auto' }}>
           <ColorPalette
             palette={editorState.palette}
             currentColor={editorState.currentColor}
