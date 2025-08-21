@@ -1256,7 +1256,18 @@ const Editor: React.FC = () => {
             {artworkId && (
               <div className={isNarrow ? 'text-sm text-gray-500 mt-1 px-2' : 'flex items-center gap-2 ml-4'}>
                 {isNarrow ? (
-                  <span className="font-mono">シリアルコード: {artworkId}</span>
+                  <button
+                    className="font-mono text-sm text-gray-700 underline decoration-dotted active:opacity-80"
+                    onClick={() => {
+                      navigator.clipboard.writeText(artworkId);
+                      setCopyMsg('コピーしました');
+                      setTimeout(() => setCopyMsg(''), 1500);
+                    }}
+                    title="シリアルコードをコピー"
+                    aria-label="シリアルコードをコピー"
+                  >
+                    シリアルコード: {artworkId}
+                  </button>
                 ) : (
                   <>
                     <span className="text-base text-gray-500 select-all">シリアルコード: <span className="font-mono text-gray-700">{artworkId}</span></span>
@@ -1274,6 +1285,7 @@ const Editor: React.FC = () => {
                     {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
                   </>
                 )}
+                {isNarrow && copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
               </div>
             )}
           </div>
