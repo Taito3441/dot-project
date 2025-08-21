@@ -1157,6 +1157,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseLeave={handlePanMouseUp}
       onWheel={handleWheel}
       style={{ cursor: isPanning ? 'grab' : (editorState.tool === 'line' && lineStart) || (editorState.tool === 'rect' && rectStart) || (editorState.tool === 'ellipse' && ellipseStart) ? 'crosshair' : editorState.tool === 'move' ? 'move' : undefined }}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <div
         className="relative"
@@ -1171,6 +1172,22 @@ export const Canvas: React.FC<CanvasProps> = ({
           onMouseDown={isPanning ? undefined : handleMouseDownWithFlag}
           onMouseMove={isPanning ? undefined : handleMouseMove}
           onMouseUp={isPanning ? undefined : handleMouseUp}
+          onPointerDown={(e) => {
+            try { (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId); } catch {}
+            if (e.isPrimary) handleMouseDownWithFlag(e as unknown as React.MouseEvent);
+          }}
+          onPointerMove={(e) => {
+            if (e.isPrimary) handleMouseMove(e as unknown as React.MouseEvent);
+          }}
+          onPointerUp={(e) => {
+            try { (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId); } catch {}
+            if (e.isPrimary) handleMouseUp();
+          }}
+          onPointerCancel={(e) => {
+            try { (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId); } catch {}
+            handleMouseUp();
+          }}
+          style={{ touchAction: 'none' }}
           onMouseLeave={isPanning ? undefined : () => { setIsLassoing(false); isLassoingRef.current = false; lastLassoPointRef.current = null; handleMouseUp(); }}
           onDoubleClick={handleDoubleClick}
         />
