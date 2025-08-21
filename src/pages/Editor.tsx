@@ -261,12 +261,14 @@ const Editor: React.FC = () => {
   const [isRightOpen, setIsRightOpen] = useState(true);
   const [isNarrow, setIsNarrow] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth <= 750 : false);
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const [viewportHeight, setViewportHeight] = useState<number>(typeof window !== 'undefined' ? window.innerHeight : 800);
   const initSidebarOnceRef = useRef(false);
 
   useEffect(() => {
     const onResize = () => {
       setIsNarrow(window.innerWidth <= 750);
       setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -1468,6 +1470,12 @@ const Editor: React.FC = () => {
                   const safe = Math.floor(Math.max(360, Math.min(allowed, viewportWidth * 0.88)));
                   return safe;
                 })()
+          }
+          viewportHeightForCanvas={
+            Math.max(
+              240,
+              Math.floor(viewportHeight - (COMMON_HEADER_HEIGHT + EDITOR_HEADER_HEIGHT) - 24)
+            )
           }
         />
       </div>
