@@ -568,14 +568,8 @@ const Editor: React.FC = () => {
             });
           });
           const w = Number(yCanvasSize.get('width')) || 32; const h = Number(yCanvasSize.get('height')) || 32;
-          if (rects.length) {
-            // 線形状を保つため、小さな矩形はそのまま、
-            // 極端に多数のときのみ保険で重なりマージ
-            const useMerge = rects.length > 512;
-            const out = useMerge ? mergeDirtyRects(rects, w, h) : rects;
-            setDirtyRects(out); setDirtyTick(t => t + 1);
-          } else if (pixels > (w * h) / 2) {
-            // 滅多にないが、大量変更時のみ全体再描画
+          if (rects.length || pixels > 0) {
+            // 安定表示を優先: 受信側は常に全体再描画に切替（矩形フラッシュ防止）
             setDirtyRects([{ x: 0, y: 0, w, h }]); setDirtyTick(t => t + 1);
           }
         }
