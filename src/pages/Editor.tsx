@@ -1236,39 +1236,47 @@ const Editor: React.FC = () => {
       <div style={{ position: 'fixed', top: COMMON_HEADER_HEIGHT, left: 0, width: '100vw', height: EDITOR_HEADER_HEIGHT, zIndex: 100, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', padding: '0 32px', justifyContent: 'flex-start' }}>
         {/* タイトル・シリアルコード・Canvas Size・Grid・Background・Actionsを横並びで配置 */}
         <div className="flex flex-row items-baseline gap-6 mb-4">
-          <input
-            className="text-3xl font-bold text-gray-900 mb-0 bg-transparent border-b-2 border-gray-200 focus:border-indigo-400 outline-none px-2 py-1"
-            style={{ minWidth: 120, maxWidth: 400 }}
-            value={localRoomTitle !== '' ? localRoomTitle : (editorState.roomTitle || '無題')}
-            onChange={e => setLocalRoomTitle(e.target.value)}
-            onBlur={() => {
-              if (localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) updateEditorState({ roomTitle: localRoomTitle });
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) {
-                updateEditorState({ roomTitle: localRoomTitle });
-                e.currentTarget.blur();
-              }
-            }}
-            placeholder="無題"
-          />
-          {artworkId && (
-            <div className="flex items-center gap-2 ml-4">
-              <span className="text-base text-gray-500 select-all">シリアルコード: <span className="font-mono text-gray-700">{artworkId}</span></span>
-              <button
-                className="ml-2 px-2 py-1 rounded bg-gray-200 hover:bg-indigo-200 text-gray-700 text-sm flex items-center"
-                onClick={() => {
-                  navigator.clipboard.writeText(artworkId);
-                  setCopyMsg('コピーしました');
-                  setTimeout(() => setCopyMsg(''), 1500);
-                }}
-                title="シリアルコードをコピー"
-              >
-                <Clipboard className="w-4 h-4 mr-1" /> コピー
-              </button>
-              {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
-            </div>
-          )}
+          <div className={isNarrow ? 'flex flex-col gap-1' : 'flex flex-row items-baseline gap-6'}>
+            <input
+              className="text-3xl font-bold text-gray-900 mb-0 bg-transparent border-b-2 border-gray-200 focus:border-indigo-400 outline-none px-2 py-1"
+              style={{ minWidth: 120, maxWidth: 400 }}
+              value={localRoomTitle !== '' ? localRoomTitle : (editorState.roomTitle || '無題')}
+              onChange={e => setLocalRoomTitle(e.target.value)}
+              onBlur={() => {
+                if (localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) updateEditorState({ roomTitle: localRoomTitle });
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) {
+                  updateEditorState({ roomTitle: localRoomTitle });
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="無題"
+            />
+            {artworkId && (
+              <div className={isNarrow ? 'text-sm text-gray-500 mt-1 px-2' : 'flex items-center gap-2 ml-4'}>
+                {isNarrow ? (
+                  <span className="font-mono">シリアルコード: {artworkId}</span>
+                ) : (
+                  <>
+                    <span className="text-base text-gray-500 select-all">シリアルコード: <span className="font-mono text-gray-700">{artworkId}</span></span>
+                    <button
+                      className="ml-2 px-2 py-1 rounded bg-gray-200 hover:bg-indigo-200 text-gray-700 text-sm flex items-center"
+                      onClick={() => {
+                        navigator.clipboard.writeText(artworkId);
+                        setCopyMsg('コピーしました');
+                        setTimeout(() => setCopyMsg(''), 1500);
+                      }}
+                      title="シリアルコードをコピー"
+                    >
+                      <Clipboard className="w-4 h-4 mr-1" /> コピー
+                    </button>
+                    {copyMsg && <span className="text-green-600 text-xs ml-2">{copyMsg}</span>}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {/* 2. 左サイドバー */}
