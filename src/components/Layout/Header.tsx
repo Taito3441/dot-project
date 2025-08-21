@@ -4,8 +4,8 @@ import { Link } from "react-router-dom";
 const Header: React.FC = () => {
   return (
     <header className="bg-white shadow p-4 flex items-center justify-between">
-      <Link to="/" className="text-xl font-bold text-blue-600" aria-label="PixelShare ホーム">
-        PixelShare
+      <Link to="/" className="text-xl font-bold text-blue-600" aria-label="ピクセルシェア ホーム">
+        ピクセルシェア
       </Link>
       <nav className="space-x-4">
         <Link to="/gallery" className="hover:underline">ギャラリー</Link>
