@@ -96,11 +96,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     if ((lassoMode === 'copying' || lassoMode === 'moving') && lassoSelections.length > 0) {
       const layer = editorState.layers[editorState.currentLayer];
+      const w = Array.isArray(layer?.canvas?.[0]) ? layer.canvas[0].length : 0;
+      const h = Array.isArray(layer?.canvas) ? layer.canvas.length : 0;
       const cache: { x: number; y: number; colorIndex: number }[] = [];
       for (const region of lassoSelections) {
         for (const { x, y } of region) {
-          const w = layer.canvas?.[0]?.length || 0;
-          const h = layer.canvas?.length || 0;
           if (x >= 0 && x < w && y >= 0 && y < h) {
             cache.push({ x, y, colorIndex: layer.canvas[y][x] });
           }
@@ -692,8 +692,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       } else {
         // 2回目クリックで確定
         if (moveOffset.x !== 0 || moveOffset.y !== 0) {
-          const h = editorState.layers[editorState.currentLayer].canvas.length;
-          const w = editorState.layers[editorState.currentLayer].canvas[0]?.length || 0;
+          const h = Array.isArray(editorState.layers[editorState.currentLayer]?.canvas) ? editorState.layers[editorState.currentLayer].canvas.length : 0;
+          const w = Array.isArray(editorState.layers[editorState.currentLayer]?.canvas?.[0]) ? editorState.layers[editorState.currentLayer].canvas[0].length : 0;
           const newCanvas = Array.from({ length: h }, (_, y) =>
             Array.from({ length: w }, (_, x) => {
               const srcX = x - moveOffset.x;
@@ -965,7 +965,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           for (const { x, y } of region) {
             const nx = x + offset.x;
             const ny = y + offset.y;
-            if (nx >= 0 && nx < canvas[0].length && ny >= 0 && ny < canvas.length) {
+            const w = Array.isArray(canvas?.[0]) ? canvas[0].length : 0; const h = Array.isArray(canvas) ? canvas.length : 0;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
               canvas[ny][nx] = l.canvas[y][x];
             }
           }
@@ -993,7 +994,8 @@ export const Canvas: React.FC<CanvasProps> = ({
         // 1. 先に元の位置を消す
         for (const region of lassoSelections) {
           for (const { x, y } of region) {
-            if (x >= 0 && x < canvas[0].length && y >= 0 && y < canvas.length) {
+            const w = Array.isArray(canvas?.[0]) ? canvas[0].length : 0; const h = Array.isArray(canvas) ? canvas.length : 0;
+            if (x >= 0 && x < w && y >= 0 && y < h) {
               canvas[y][x] = 0;
             }
           }
@@ -1003,7 +1005,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           for (const { x, y } of region) {
             const nx = x + offset.x;
             const ny = y + offset.y;
-            if (nx >= 0 && nx < canvas[0].length && ny >= 0 && ny < canvas.length) {
+            const w = Array.isArray(canvas?.[0]) ? canvas[0].length : 0; const h = Array.isArray(canvas) ? canvas.length : 0;
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
               canvas[ny][nx] = l.canvas[y][x];
             }
           }
@@ -1259,8 +1262,8 @@ export const Canvas: React.FC<CanvasProps> = ({
               const ctx = el.getContext('2d');
               if (!ctx) return;
               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-              const h = editorState.layers[editorState.currentLayer].canvas.length;
-              const w = editorState.layers[editorState.currentLayer].canvas[0]?.length || 0;
+              const h = Array.isArray(editorState.layers[editorState.currentLayer]?.canvas) ? editorState.layers[editorState.currentLayer].canvas.length : 0;
+              const w = Array.isArray(editorState.layers[editorState.currentLayer]?.canvas?.[0]) ? editorState.layers[editorState.currentLayer].canvas[0].length : 0;
               for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
                   const srcX = x - moveOffset.x;
