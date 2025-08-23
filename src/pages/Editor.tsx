@@ -999,7 +999,8 @@ const Editor: React.FC = () => {
         JSON.stringify(prev.palette) === JSON.stringify(next.palette) &&
         prev.currentColor === next.currentColor &&
         prev.tool === next.tool &&
-        prev.roomTitle === next.roomTitle
+        prev.roomTitle === next.roomTitle &&
+        prev.eraserScope === (next as any).eraserScope
       ) {
         return prev; // 変化がなければstateを更新しない
       }
