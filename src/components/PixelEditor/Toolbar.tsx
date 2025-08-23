@@ -31,6 +31,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onShowGridChange,
 }) => {
   const [lassoMenuOpen, setLassoMenuOpen] = useState(false);
+  const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const tools = [
     { id: 'brush', icon: Brush, label: 'ペン', shortcut: 'B' },
     { id: 'eraser', icon: Eraser, label: '消しゴム', shortcut: 'E' },
@@ -121,19 +122,29 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   <span className="ml-auto text-sm text-gray-600">{editorState.eraserScope === 'all' ? '全レイヤー' : '現在レイヤー'}</span>
                 )}
               </button>
-                {/* Eraser dropdown */}
                 {tool.id === 'eraser' && (
-                  <div className="absolute right-2 top-2">
-                    <select
-                      value={editorState.eraserScope || 'current'}
-                      onChange={(e) => onStateChange({ eraserScope: (e.target.value as 'current' | 'all') })}
-                      className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"
+                  <>
+                    <button
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded hover:bg-indigo-100"
+                      onClick={() => setEraserMenuOpen((v) => !v)}
                       title="消しゴムの作用範囲"
                     >
-                      <option value="current">現在レイヤーのみ</option>
-                      <option value="all">全レイヤー</option>
-                    </select>
-                  </div>
+                      <span className="inline-block" style={{ width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderLeft: '8px solid #374151' }} />
+                    </button>
+                    {eraserMenuOpen && (
+                      <div className="absolute left-full top-0 ml-2 z-20 bg-white border border-gray-300 rounded-2xl shadow-lg overflow-hidden min-w-[220px]">
+                        <button
+                          className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${(!editorState.eraserScope || editorState.eraserScope === 'current') ? 'font-semibold text-indigo-700' : ''}`}
+                          onClick={() => { onStateChange({ eraserScope: 'current' }); setEraserMenuOpen(false); }}
+                        >現在レイヤーのみ</button>
+                        <div className="h-px bg-gray-200" />
+                        <button
+                          className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${editorState.eraserScope === 'all' ? 'font-semibold text-indigo-700' : ''}`}
+                          onClick={() => { onStateChange({ eraserScope: 'all' }); setEraserMenuOpen(false); }}
+                        >全レイヤー</button>
+                      </div>
+                    )}
+                  </>
                 )}
                 {/* Lasso menu */}
                 {tool.id === 'lasso' && lassoMenuOpen && (
