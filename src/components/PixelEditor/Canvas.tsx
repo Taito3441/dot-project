@@ -131,6 +131,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const canvasHeight = height * pixelSize;
   const strokePointsRef = useRef<{ x: number; y: number }[]>([]);
   const prevValuesRef = useRef<Map<number, number>>(new Map());
+  const preferPointer = typeof window !== 'undefined' && 'PointerEvent' in window;
 
   useEffect(() => {
     // 選択中レイヤーのcanvasで初期化
@@ -1171,11 +1172,12 @@ export const Canvas: React.FC<CanvasProps> = ({
           width={canvasWidth}
           height={canvasHeight}
           className="border border-gray-300 rounded shadow-sm cursor-crosshair bg-white"
-          onMouseDown={isPanning ? undefined : handleMouseDownWithFlag}
-          onMouseMove={isPanning ? undefined : handleMouseMove}
-          onMouseUp={isPanning ? undefined : handleMouseUp}
+          onMouseDown={isPanning || preferPointer ? undefined : handleMouseDownWithFlag}
+          onMouseMove={isPanning || preferPointer ? undefined : handleMouseMove}
+          onMouseUp={isPanning || preferPointer ? undefined : handleMouseUp}
           onPointerDown={(e) => {
             try { (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId); } catch {}
+            e.preventDefault();
             if (e.isPrimary) handleMouseDownWithFlag(e as unknown as React.MouseEvent);
           }}
           onPointerMove={(e) => {
