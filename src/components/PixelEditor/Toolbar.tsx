@@ -169,12 +169,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                       >
                         <button
                           className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${(!editorState.eraserScope || editorState.eraserScope === 'current') ? 'font-semibold text-indigo-700' : ''}`}
-                          onClick={() => { onStateChange({ eraserScope: 'current' }); setEraserMenuOpen(false); }}
+                          onClick={(e) => { e.preventDefault(); onStateChange({ eraserScope: 'current' }); setEraserMenuOpen(false); }}
                         >現在レイヤーのみ</button>
                         <div className="h-px bg-gray-200" />
                         <button
                           className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${editorState.eraserScope === 'all' ? 'font-semibold text-indigo-700' : ''}`}
-                          onClick={() => { onStateChange({ eraserScope: 'all' }); setEraserMenuOpen(false); }}
+                          onClick={(e) => { e.preventDefault(); onStateChange({ eraserScope: 'all' }); setEraserMenuOpen(false); }}
                         >全レイヤー</button>
                       </div>,
                       eraserMenuRoot
