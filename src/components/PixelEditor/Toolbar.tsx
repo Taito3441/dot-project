@@ -117,7 +117,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               >
                 <Icon className="h-9 w-9" />
                 <span className="font-semibold text-xl">{tool.label}</span>
+                {tool.id === 'eraser' && (
+                  <span className="ml-auto text-sm text-gray-600">{editorState.eraserScope === 'all' ? '全レイヤー' : '現在レイヤー'}</span>
+                )}
               </button>
+                {/* Eraser dropdown */}
+                {tool.id === 'eraser' && (
+                  <div className="absolute right-2 top-2">
+                    <select
+                      value={editorState.eraserScope || 'current'}
+                      onChange={(e) => onStateChange({ eraserScope: (e.target.value as 'current' | 'all') })}
+                      className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"
+                      title="消しゴムの作用範囲"
+                    >
+                      <option value="current">現在レイヤーのみ</option>
+                      <option value="all">全レイヤー</option>
+                    </select>
+                  </div>
+                )}
                 {/* Lasso menu */}
                 {tool.id === 'lasso' && lassoMenuOpen && (
                   <div className="absolute left-full top-0 ml-2 z-10 bg-white border border-gray-300 rounded-lg shadow-lg flex flex-col w-40">
