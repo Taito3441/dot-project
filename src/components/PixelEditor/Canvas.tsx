@@ -769,12 +769,32 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     if (editorState.tool === 'eraser') {
-      drawPixelDirect(coords.x, coords.y, true);
-      // 即時反映
-      const newLayers = editorState.layers.map((l, i) =>
-        i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
-      );
-      onStateChange({ layers: newLayers });
+      const scope = editorState.eraserScope || 'current';
+      if (scope === 'current') {
+        drawPixelDirect(coords.x, coords.y, true);
+        const newLayers = editorState.layers.map((l, i) =>
+          i === editorState.currentLayer ? { ...l, canvas: canvasDataRef.current.map(row => [...row]) } : l
+        );
+        onStateChange({ layers: newLayers });
+      } else {
+        // 全レイヤーの同座標を消す
+        const newLayers = editorState.layers.map((l, i) => {
+          const can = l.canvas.map(row => [...row]);
+          const h = can.length; const w = can[0]?.length || 0;
+          if (coords.x >= 0 && coords.x < w && coords.y >= 0 && coords.y < h) {
+            can[coords.y][coords.x] = 0;
+          }
+          return { ...l, canvas: can };
+        });
+        // ローカル編集中レイヤーのキャッシュも合わせる
+        if (Array.isArray(canvasDataRef.current?.[0])) {
+          const h = canvasDataRef.current.length; const w = canvasDataRef.current[0].length;
+          if (coords.x >= 0 && coords.x < w && coords.y >= 0 && coords.y < h) {
+            canvasDataRef.current[coords.y][coords.x] = 0;
+          }
+        }
+        onStateChange({ layers: newLayers });
+      }
       return;
     }
 

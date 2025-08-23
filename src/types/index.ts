@@ -60,6 +60,8 @@ export interface EditorState {
   lassoMirror?: boolean; // 左右反転中か
   lassoMenuAction?: 'copy' | 'delete' | 'move' | null;
   roomTitle: string;
+  // 消しゴムの作用範囲（current: 現在レイヤーのみ, all: 全レイヤー）
+  eraserScope?: 'current' | 'all';
 }
 
 export interface FirebasePixelArt {
