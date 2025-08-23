@@ -953,18 +953,37 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!coords || !dragStartRef.current) return;
 
     const points = getLinePoints(dragStartRef.current, coords);
-    for (const point of points) {
-      if (editorState.tool === 'eraser') {
-        drawPixelDirect(point.x, point.y, true);
-      } else {
-        drawPixelDirect(point.x, point.y);
+    if (editorState.tool === 'eraser' && (editorState as any).eraserScope === 'all') {
+      // 全レイヤーを即時更新（他レイヤーも再描画させるためにstateに反映）
+      const cloned = editorState.layers.map(l => ({ ...l, canvas: l.canvas.map(row => [...row]) }));
+      for (const p of points) {
+        for (let i = 0; i < cloned.length; i++) {
+          const can = cloned[i].canvas; const h = can.length; const w = can[0]?.length || 0;
+          if (p.x >= 0 && p.x < w && p.y >= 0 && p.y < h) can[p.y][p.x] = 0;
+        }
+        if (Array.isArray(canvasDataRef.current?.[0])) {
+          const h = canvasDataRef.current.length; const w = canvasDataRef.current[0].length;
+          if (p.x >= 0 && p.x < w && p.y >= 0 && p.y < h) canvasDataRef.current[p.y][p.x] = 0;
+        }
       }
-    }
-    dragStartRef.current = coords;
+      onStateChange({ layers: cloned });
+      dragStartRef.current = coords;
+      drawCanvas();
+      return;
+    } else {
+      for (const point of points) {
+        if (editorState.tool === 'eraser') {
+          drawPixelDirect(point.x, point.y, true);
+        } else {
+          drawPixelDirect(point.x, point.y);
+        }
+      }
+      dragStartRef.current = coords;
 
-    // ローカルのcanvasを即時再描画
-    drawCanvas();
-    // --- ここでonStateChangeは呼ばない（マウスアップ時のみ同期）---
+      // ローカルのcanvasを即時再描画
+      drawCanvas();
+      // --- ここでonStateChangeは呼ばない（マウスアップ時のみ同期）---
+    }
   };
   const originalHandleMouseDown = handleMouseDown;
   const handleMouseDownWithFlag = (event: React.MouseEvent) => {
