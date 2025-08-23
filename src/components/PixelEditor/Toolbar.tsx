@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Brush, Eraser, PartyPopper as Eyedropper, PaintBucket, Undo, Redo, ZoomIn, ZoomOut, Download, Save, RotateCcw, Upload, Scissors } from 'lucide-react';
 import { EditorState } from '../../types';
 
@@ -32,6 +33,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 }) => {
   const [lassoMenuOpen, setLassoMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
+  const [eraserMenuPos, setEraserMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const eraserBtnRef = useRef<HTMLButtonElement | null>(null);
+  const eraserMenuRoot = typeof document !== 'undefined' ? document.body : null;
+
+  useEffect(() => {
+    if (!eraserMenuOpen) return;
+    const close = () => setEraserMenuOpen(false);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    const onDoc = (e: MouseEvent) => {
+      if (!eraserMenuOpen) return;
+      const btn = eraserBtnRef.current;
+      const menu = document.getElementById('eraser-menu-popup');
+      if (menu && (menu === e.target || menu.contains(e.target as Node))) return;
+      if (btn && (btn === e.target || btn.contains(e.target as Node))) return;
+      setEraserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [eraserMenuOpen]);
   const tools = [
     { id: 'brush', icon: Brush, label: 'ペン', shortcut: 'B' },
     { id: 'eraser', icon: Eraser, label: '消しゴム', shortcut: 'E' },
@@ -125,14 +150,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 {tool.id === 'eraser' && (
                   <>
                     <button
+                      ref={eraserBtnRef}
                       className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded hover:bg-indigo-100"
-                      onClick={() => setEraserMenuOpen((v) => !v)}
+                      onClick={(e) => {
+                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        setEraserMenuPos({ left: Math.round(rect.right + 8), top: Math.round(rect.top) });
+                        setEraserMenuOpen((v) => !v);
+                      }}
                       title="消しゴムの作用範囲"
                     >
                       <span className="inline-block" style={{ width: 0, height: 0, borderTop: '6px solid transparent', borderBottom: '6px solid transparent', borderLeft: '8px solid #374151' }} />
                     </button>
-                    {eraserMenuOpen && (
-                      <div className="absolute left-full top-0 ml-2 z-20 bg-white border border-gray-300 rounded-2xl shadow-lg overflow-hidden min-w-[220px]">
+                    {eraserMenuOpen && eraserMenuPos && eraserMenuRoot && createPortal(
+                      <div
+                        id="eraser-menu-popup"
+                        style={{ position: 'fixed', left: eraserMenuPos.left, top: eraserMenuPos.top, zIndex: 10000 }}
+                        className="bg-white border border-gray-300 rounded-2xl shadow-lg overflow-hidden min-w-[220px]"
+                      >
                         <button
                           className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${(!editorState.eraserScope || editorState.eraserScope === 'current') ? 'font-semibold text-indigo-700' : ''}`}
                           onClick={() => { onStateChange({ eraserScope: 'current' }); setEraserMenuOpen(false); }}
@@ -142,7 +176,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                           className={`block w-full text-left px-5 py-3 hover:bg-indigo-50 ${editorState.eraserScope === 'all' ? 'font-semibold text-indigo-700' : ''}`}
                           onClick={() => { onStateChange({ eraserScope: 'all' }); setEraserMenuOpen(false); }}
                         >全レイヤー</button>
-                      </div>
+                      </div>,
+                      eraserMenuRoot
                     )}
                   </>
                 )}
