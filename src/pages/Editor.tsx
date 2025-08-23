@@ -829,6 +829,29 @@ const Editor: React.FC = () => {
     (ydocRef.current as any)?.transact(() => {
       const width = Number(yCanvasSizeRef.current?.get('width')) || 32;
       const height = Number(yCanvasSizeRef.current?.get('height')) || 32;
+      const scopeAll = (editorState as any)?.eraserScope === 'all' && editorState.tool === 'eraser';
+      if (scopeAll) {
+        // 全レイヤーの状態をYjsへ同期（フル置換）。
+        for (let i = 0; i < layers.length; i++) {
+          const lay = layers[i]; if (!lay) continue;
+          let flatAll: number[] = [];
+          if (Array.isArray(lay.canvas) && Array.isArray(lay.canvas[0])) flatAll = lay.canvas.flat();
+          const fullLen = width * height;
+          const fixed = flatAll.slice(0, fullLen);
+          while (fixed.length < fullLen) fixed.push(0);
+          const it = yLayers.get(i);
+          if (it instanceof Y.Map) {
+            let yCanvas = it.get('canvas') as Y.Array<number>;
+            if (!yCanvas || !(yCanvas instanceof Y.Array)) {
+              yCanvas = new Y.Array<number>();
+              it.set('canvas', yCanvas);
+            }
+            yCanvas.delete(0, yCanvas.length);
+            yCanvas.insert(0, fixed);
+          }
+        }
+        return;
+      }
       // 変更箇所: 現在編集中のレイヤーだけをYjsへ反映（大変更時の全置換を避ける）
       const current = layers[editorState.currentLayer];
       if (current) {
