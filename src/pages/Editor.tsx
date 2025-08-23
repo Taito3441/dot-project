@@ -227,6 +227,7 @@ const Editor: React.FC = () => {
       currentLayer: 0,
       showGrid: true,
       backgroundPattern: 'light' as const,
+      eraserScope: 'current' as any,
       roomTitle: '無題',
     };
   };
