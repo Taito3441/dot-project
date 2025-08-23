@@ -515,8 +515,7 @@ export const Canvas: React.FC<CanvasProps> = ({
             ctx.fillStyle = `rgba(${color.r},${color.g},${color.b},${color.a})`;
             ctx.fillRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
           } else {
-            // 透明ならセルをクリア
-            ctx.clearRect(x * pixelSize + 1, y * pixelSize + 1, pixelSize - 2, pixelSize - 2);
+            // 透明のときは背景とグリッドをすでに再描画済みなので何もしない
           }
         }
       }
