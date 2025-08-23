@@ -1028,10 +1028,13 @@ const Editor: React.FC = () => {
 
   const handleSave = () => {
     setShowSaveDialog(true);
+    setIsUploading(false);
   };
 
   const handleSaveConfirm = async () => {
-    if (!user) return;
+    if (!user) { alert('投稿にはログインが必要です'); return; }
+    if (isUploading) return;
+    setIsUploading(true);
     try {
       const merged = mergeLayers(
         editorState.layers,
@@ -1058,6 +1061,7 @@ const Editor: React.FC = () => {
       setSaveData({ title: '', description: '' });
       setShowPostComplete(true);
     } catch (e) {
+      console.warn('投稿に失敗しました', e);
       alert('保存に失敗しました');
     } finally {
       setIsUploading(false);
