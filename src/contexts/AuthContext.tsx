@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
-  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged,
   User as FirebaseUser 
@@ -63,6 +64,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
+  // 端末ブラウザでのリダイレクト戻りを処理（必要に応じてエラー確認）
+  useEffect(() => {
+    (async () => {
+      try {
+        await getRedirectResult(auth);
+        // 成功時は onAuthStateChanged 側で状態反映される
+      } catch (err) {
+        console.warn('getRedirectResult error', err);
+      }
+    })();
+  }, []);
+
   const createOrGetUser = async (firebaseUser: FirebaseUser): Promise<User> => {
     if (!firebaseUser) throw new Error('No firebaseUser provided');
     const userRef = doc(db, 'users', firebaseUser.uid);
@@ -111,10 +124,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = async (): Promise<boolean> => {
     try {
-      await signInWithPopup(auth, googleProvider);
-      return true;
-    } catch (error) {
+      const ua = (typeof navigator !== 'undefined' ? navigator.userAgent : '') || '';
+      const isInApp = /Line\//i.test(ua) || /FBAN|FBAV/i.test(ua) || /Instagram/i.test(ua) || /Twitter/i.test(ua) || /; wv\)/i.test(ua);
+      if (isInApp) {
+        const isAndroid = /Android/i.test(ua);
+        if (isAndroid) {
+          const intent = `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=${location.protocol.replace(':','')};package=com.android.chrome;end`;
+          try { window.location.href = intent; } catch {}
+          setTimeout(() => {
+            alert('アプリ内ブラウザでは Google ログインできません。Chrome など外部ブラウザで開いてからお試しください。');
+          }, 400);
+        } else {
+          alert('アプリ内ブラウザ（LINE/Instagram等）では Google ログインできません。共有ボタン等から「Safari で開く」で外部ブラウザに移動してお試しください。');
+        }
+        return false;
+      }
+      await signInWithRedirect(auth, googleProvider);
+      return true; // 実際の処理はリダイレクト後
+    } catch (error: any) {
       console.error('Login failed:', error);
+      // disallowed_useragent 対策のメッセージ
+      if (String(error?.message || '').includes('disallowed_useragent')) {
+        alert('Google によりこのブラウザではログインがブロックされています。Chrome/Safari などの外部ブラウザで開いて再度お試しください。');
+      }
       return false;
     }
   };
