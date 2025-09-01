@@ -1217,17 +1217,38 @@ export const Canvas: React.FC<CanvasProps> = ({
           onPointerDown={(e) => {
             try { (e.target as HTMLElement)?.setPointerCapture?.(e.pointerId); } catch {}
             e.preventDefault();
+            // 中ボタン（ホイール押し）でパン開始
+            if (e.button === 1) {
+              isDrawingRef.current = false;
+              setIsPanning(true);
+              setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+              return;
+            }
             if (e.isPrimary) handleMouseDownWithFlag(e as unknown as React.MouseEvent);
           }}
           onPointerMove={(e) => {
+            // パン中はオフセット更新のみ
+            if (isPanning && panStart) {
+              setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+              return;
+            }
             if (e.isPrimary) handleMouseMove(e as unknown as React.MouseEvent);
           }}
           onPointerUp={(e) => {
             try { (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId); } catch {}
+            if (isPanning) {
+              setIsPanning(false);
+              setPanStart(null);
+              return;
+            }
             if (e.isPrimary) handleMouseUp();
           }}
           onPointerCancel={(e) => {
             try { (e.target as HTMLElement)?.releasePointerCapture?.(e.pointerId); } catch {}
+            if (isPanning) {
+              setIsPanning(false);
+              setPanStart(null);
+            }
             handleMouseUp();
           }}
           style={{ touchAction: 'none' }}
