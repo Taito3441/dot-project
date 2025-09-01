@@ -235,6 +235,7 @@ const Editor: React.FC = () => {
   const ydocRef = useRef<Y.Doc>();
   const providerRef = useRef<any>();
   const awarenessRef = useRef<any>();
+  const initialSyncedRef = useRef(false);
   const [remoteCursors, setRemoteCursors] = useState<{ x: number; y: number; color?: string }[]>([]);
   const [dirtyRects, setDirtyRects] = useState<{ x: number; y: number; w: number; h: number }[]>([]);
   const [dirtyTick, setDirtyTick] = useState(0);
@@ -728,24 +729,15 @@ const Editor: React.FC = () => {
       }
       // 既存データがある場合は単に反映
       updateFromYjs();
+      // 以後はReact→Yjs同期を許可
+      initialSyncedRef.current = true;
     });
 
-    // 初回: Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
+    // 初回: 同期前はドキュメントを書き換えない
+    // ローカルUI初期化のみ行い、実際のYjs初期化は'synced'後に空判定してから行う
     if (yLayers.length === 0) {
       const initState = initialEditorState();
       setEditorState(initState);
-      // editorState.layersをIDで一意化してpush
-      const uniqueInitLayers = [];
-      const seenInit = new Set();
-      for (const l of initState.layers) {
-        if (!seenInit.has(l.id)) {
-          uniqueInitLayers.push(l);
-          seenInit.add(l.id);
-        }
-      }
-      uniqueInitLayers.forEach(l => yLayers.push([l]));
-      if (!yCanvasSize.get('width')) yCanvasSize.set('width', canvasSize.width);
-      if (!yCanvasSize.get('height')) yCanvasSize.set('height', canvasSize.height);
     } else {
       // Yjsにデータがあれば必ずローカルstateをYjsの内容で上書き
       const layersRaw = yLayers.toArray();
@@ -822,6 +814,8 @@ const Editor: React.FC = () => {
 
   // React state→Yjs反映（layers/roomTitle/canvasSize）
   useEffect(() => {
+    // 初期同期前は共有状態を書き換えない（後から入室したクライアントが32x32で上書きするのを防止）
+    if (!initialSyncedRef.current) return;
     if (isYjsUpdateRef.current) return;
     if (!yLayersRef.current || !yRoomTitleRef.current) return;
     const yLayers = yLayersRef.current;
@@ -1029,6 +1023,24 @@ const Editor: React.FC = () => {
     };
     setCanvasSize({ width, height });
     updateEditorState(newState);
+
+    // サイズ変更は即時に永続化（ストロークが無くても幅高さが最新化されるように）
+    try {
+      if (artworkId) {
+        const safeLayers = newLayers
+          .filter(l => Array.isArray(l.canvas) && Array.isArray(l.canvas[0]))
+          .map(l => ({ ...l, canvas: l.canvas.flat() }));
+        const data = {
+          layers: safeLayers,
+          width,
+          height,
+          palette: Array.isArray(editorState.palette) ? editorState.palette : getDefaultPalette(),
+          roomTitle: typeof editorState.roomTitle === 'string' ? editorState.roomTitle : '',
+          layersCount: safeLayers.length,
+        } as any;
+        PixelArtService.saveLatestState(artworkId, data);
+      }
+    } catch {}
   };
 
   const handleSave = () => {
