@@ -228,7 +228,7 @@ const Editor: React.FC = () => {
       showGrid: true,
       backgroundPattern: 'light' as const,
       eraserScope: 'current' as any,
-      roomTitle: '無題',
+      roomTitle: '',
     };
   };
   const [editorState, setEditorState] = useState<EditorState>(initialEditorState);
@@ -646,7 +646,7 @@ const Editor: React.FC = () => {
               toInsert.push(map);
             }
             if (toInsert.length) yLayers.push(toInsert);
-            if (yRoomTitle.length === 0) yRoomTitle.insert(0, '無題');
+            // タイトルはYjsにデフォルト文字列を書き込まない（UIのplaceholderで表示）
           }, 'local');
           // 2. 残ストロークをスナップショット時刻以降で適用
           try {
@@ -710,7 +710,10 @@ const Editor: React.FC = () => {
             }
             yCanvasSize.set('width', latest.width);
             yCanvasSize.set('height', latest.height);
-            if (yRoomTitle.length === 0) yRoomTitle.insert(0, latest.roomTitle || '無題');
+            // Firestoreにタイトルがあれば反映（空や未定義なら何もしない）
+            if (yRoomTitle.length === 0 && latest.roomTitle && String(latest.roomTitle).trim() !== '') {
+              yRoomTitle.insert(0, String(latest.roomTitle));
+            }
           } else {
             const initState = initialEditorState();
             yLayers.push([{
@@ -719,7 +722,7 @@ const Editor: React.FC = () => {
             }]);
             yCanvasSize.set('width', initState.canvas[0].length);
             yCanvasSize.set('height', initState.canvas.length);
-            if (yRoomTitle.length === 0) yRoomTitle.insert(0, initState.roomTitle);
+            // タイトルはデフォルト（無題）を書かない。ユーザー入力時のみ同期
           }
         }
       }
@@ -943,8 +946,9 @@ const Editor: React.FC = () => {
       }
       // レイヤー削除は安全のためスキップ（誤検出で全消しされるのを防止）
       // roomTitle（違うときだけdelete→insert）
-      const title = editorState.roomTitle || '無題';
-      if (yRoomTitle.toString() !== title) {
+      const title = (editorState.roomTitle || '').trim();
+      // 空タイトルのときはYjsへは書き込まない（placeholder表示のみにする）
+      if (title !== '' && yRoomTitle.toString() !== title) {
         yRoomTitle.delete(0, yRoomTitle.length);
         yRoomTitle.insert(0, title);
       }
@@ -1269,7 +1273,7 @@ const Editor: React.FC = () => {
             <input
               className="text-3xl font-bold text-gray-900 mb-0 bg-transparent border-b-2 border-gray-200 focus:border-indigo-400 outline-none px-2 py-1"
               style={{ minWidth: 120, maxWidth: 400 }}
-              value={localRoomTitle !== '' ? localRoomTitle : (editorState.roomTitle || '無題')}
+              value={localRoomTitle !== '' ? localRoomTitle : (editorState.roomTitle || '')}
               onChange={e => setLocalRoomTitle(e.target.value)}
               onBlur={() => {
                 if (localRoomTitle !== '' && localRoomTitle !== editorState.roomTitle) updateEditorState({ roomTitle: localRoomTitle });

@@ -1,0 +1,16 @@
+warning: in the working copy of 'index.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/Gallery/ArtworkCard.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/Layout/Header.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/PixelEditor/Canvas.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/PixelEditor/Toolbar.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/config/firebase.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/contexts/AuthContext.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Editor.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/pages/Home.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/types/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'yws-server/Dockerfile', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'yws-server/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'yws-server/server.js', LF will be replaced by CRLF the next time Git touches it
+ yws-server/docker-compose.yml |   1 [32m+[m
+ yws-server/server.js          | 117 [32m++++++++[m[31m----------------------------------[m
+ 2 files changed, 23 insertions(+), 95 deletions(-)
