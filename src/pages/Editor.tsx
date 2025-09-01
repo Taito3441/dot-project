@@ -365,6 +365,10 @@ const Editor: React.FC = () => {
         // Debug peers count to verify P2P connectivity
         provider.on('peers', (e: any) => console.log('Yjs peers:', e.webrtcPeers, e.bcPeers));
         providerRef.current = provider;
+        // y-webrtc は 'synced' イベントを持たないため、以後のReact→Yjs同期を許可
+        initialSyncedRef.current = true;
+        // 現在のY状態を即反映
+        try { updateFromYjs(); } catch {}
       }
     }, 12000);
     ydocRef.current = ydoc;
