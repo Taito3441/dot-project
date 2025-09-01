@@ -526,13 +526,14 @@ const Editor: React.FC = () => {
       const yTitle = yRoomTitle.toString();
       setEditorState(prev => {
         let changed = false;
-        let next = { ...prev };
-        if (JSON.stringify(prev.layers) !== JSON.stringify(layers)) {
-          next.layers = layers;
+        let next = { ...prev } as EditorState;
+        // yLayersが空のときはローカルのlayersを保持（初期表示を白くしない）
+        if (yLayers.length > 0 && JSON.stringify(prev.layers) !== JSON.stringify(layers)) {
+          next = { ...next, layers } as any;
           changed = true;
         }
         if (prev.roomTitle !== yTitle) {
-          next.roomTitle = yTitle;
+          next = { ...next, roomTitle: yTitle } as any;
           setLocalRoomTitle(yTitle);
           changed = true;
         }
