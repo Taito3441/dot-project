@@ -135,9 +135,11 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     // 選択中レイヤーのcanvasで初期化
-    const layer = editorState.layers[editorState.currentLayer];
-    if (layer) {
+    const layer = editorState.layers?.[editorState.currentLayer];
+    if (layer && Array.isArray(layer.canvas) && Array.isArray(layer.canvas[0])) {
       canvasDataRef.current = layer.canvas.map(row => [...row]);
+    } else {
+      canvasDataRef.current = createEmptyCanvas(width, height);
     }
   }, [editorState.currentLayer, editorState.layers, width, height]);
 
