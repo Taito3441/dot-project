@@ -117,10 +117,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   // Canvas Size Selector
   const firstLayer = editorState.layers[0];
-  const canvasSizeValue =
-    firstLayer && firstLayer.canvas
-      ? `${firstLayer.canvas[0].length}x${firstLayer.canvas.length}`
-      : "32x32";
+  const widthSafe = Array.isArray(firstLayer?.canvas) && Array.isArray(firstLayer?.canvas?.[0])
+    ? firstLayer!.canvas[0].length
+    : 32;
+  const heightSafe = Array.isArray(firstLayer?.canvas)
+    ? firstLayer!.canvas.length
+    : 32;
+  const canvasSizeValue = `${widthSafe}x${heightSafe}`;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4 relative">
